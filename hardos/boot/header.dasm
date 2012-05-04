@@ -1,7 +1,0 @@
-
-set pc, BOOT_ORG    ; Jump to bootloader
-dat 0x5353,0x4653   ; "SSFS"
-dat 0x0100          ; Version
-dat 0xabad          ; First free sector
-dat 0xcafe          ; First unformatted sector
-dat 0x0000 .dup 25  ; Reserved
