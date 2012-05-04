@@ -1,27 +1,43 @@
 
-:DEVICE_ID          .equ BOOT_DD_VARS
-                    
-:HMD_QUERY_MEDIA_PRESENT    .equ 0x0000
-:HMD_QUERY_MEDIA_PARAMETERS .equ 0x0001
-:HMD_QUERY_DEVICE_FLAGS     .equ 0x0002
-:HMD_UPDATE_DEVICE_FLAGS    .equ 0x0003
-:HMD_QUERY_INTERRUPT_TYPE   .equ 0x0004
-:HMD_SET_INTERRUPT_MESSAGE  .equ 0x0005
-:HMD_READ_SECTORS           .equ 0x0010
-:HMD_WRITE_SECTORS          .equ 0x0011
+.include "loader.i"
 
-:HMD_ERROR_NONE             .equ 0x0000
-:HMD_ERROR_NO_MEDIA         .equ 0x0001
-:HMD_ERROR_INVALID_SECTOR   .equ 0x0002
-:HMD_ERROR_PENDING          .equ 0x0003
+;
+; Variables
+;
 
-:HMD_NON_BLOCKING           .equ 0x0001
-:HMD_MEDIA_STATUS_INTERRUPT .equ 0x0002
+.equ DEVICE_ID                  BOOT_DD_VARS
 
-:HMD_INT_NONE               .equ 0x0000
-:HMD_INT_MEDIA_STATUS       .equ 0x0001
-:HMD_INT_READ_COMPLETE      .equ 0x0002
-:HMD_INT_WRITE_COMPLETE     .equ 0x0003
+;
+; Constants.
+;
+
+.equ TRUE           1
+.equ FALSE          0
+
+.equ SUCCESS        1
+.equ FAILURE        0
+
+.equ HMD_QUERY_MEDIA_PRESENT    0x0000
+.equ HMD_QUERY_MEDIA_PARAMETERS 0x0001
+.equ HMD_QUERY_DEVICE_FLAGS     0x0002
+.equ HMD_UPDATE_DEVICE_FLAGS    0x0003
+.equ HMD_QUERY_INTERRUPT_TYPE   0x0004
+.equ HMD_SET_INTERRUPT_MESSAGE  0x0005
+.equ HMD_READ_SECTORS           0x0010
+.equ HMD_WRITE_SECTORS          0x0011
+
+.equ HMD_ERROR_NONE             0x0000
+.equ HMD_ERROR_NO_MEDIA         0x0001
+.equ HMD_ERROR_INVALID_SECTOR   0x0002
+.equ HMD_ERROR_PENDING          0x0003
+
+.equ HMD_NON_BLOCKING           0x0001
+.equ HMD_MEDIA_STATUS_INTERRUPT 0x0002
+
+.equ HMD_INT_NONE               0x0000
+.equ HMD_INT_MEDIA_STATUS       0x0001
+.equ HMD_INT_READ_COMPLETE      0x0002
+.equ HMD_INT_WRITE_COMPLETE     0x0003
 
 
 ; Landing pads
@@ -31,34 +47,81 @@
 :land_read_sector   set pc, hmd_read_sector
 .org dd_get_driver
 :land_get_driver    set pc, hmd_get_driver
+.org dd_get_sector_size
+:land_get_sector_size  set pc, hmd_get_sector_size
+
 
 ; Implementation
 .org BOOT_DD_CODE
 
-                    ; dd_init(A device_id)
-                    ; = A success
-:hmd_init           set [DEVICE_ID], a
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; hmd_init(A = device_id)
+                    ; -> A = success
+                    ;
+                    ; Initialises the disk driver.
+                    ;
+                    
+:hmd_init           ; Cache the device ID.
+                    set [DEVICE_ID], a
                     set pc, pop
 
-                    ; dd_read_sector(A sector, B buffer)
-                    ; = A success
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; hmd_read_sector(A = sector, B = buffer)
+                    ; -> A = success
+                    ;  * A B C
+                    ;
+                    ; Reads a sector into an in-memory buffer.
+                    ;
+                    
 :hmd_read_sector    set push, x
                     set x, b
                     set c, 1
                     set b, a
                     set a, HMD_READ_SECTORS
                     hwi [DEVICE_ID]
+                    ifn a, SUCCESS
+                        set a, FAILURE
                     set x, pop
                     set pc, pop
                     
-                    ; dd_get_driver()
-                    ; = A filename
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; hmd_get_driver()
+                    ; -> A = filename
+                    ;
+                    ; Returns a pointer to the filename of the full driver for
+                    ; this device.
+                    ;
+                    
 :hmd_get_driver     set a, FN_DRIVER
                     set pc, pop
                     
-                    ; "HMD2043\0DRV\0"
-:FN_DRIVER          dat 0x484d,0x4432,0x3034,0x3300,0x4452,0x5600
-
-; End of segment
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; hmd_get_sector_size()
+                    ; -> A = size
+                    ;
+                    ; Returns the size, in words, of sectors read from disk.
+                    ;
+                    
+:hmd_get_sector_size
+                    set a, 512
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data
+                    ;
+                    
+:FN_DRIVER          dat p"HMD2043\0DRV\0"
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    
 .org BOOT_DD_END
                     sub pc, 1

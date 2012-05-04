@@ -1,18 +1,43 @@
 
-:SCREEN_OFF     .equ BOOT_VARS
+.include "loader.i"
+.include "../syscall.i"
 
-:LOAD_BASE      .equ 0x0000
-:SCREEN_BASE    .equ 0x8000
-:F_Wz           .equ 0xF000
+;
+; Variables.
+;
 
-:LEM_MEM_MAP_SCREEN     .equ 0
-:LEM_MEM_MAP_FONT       .equ 1
-:LEM_MEM_MAP_PALETTE    .equ 2
-:LEM_SET_BORDER_COLOR   .equ 3
+.equ SCREEN_OFF     BOOT_VARS
+
+;
+; Constants.
+;
+
+.equ TRUE           1
+.equ FALSE          0
+
+.equ SUCCESS        1
+.equ FAILURE        0
+
+.equ LOAD_BASE      0x0000
+.equ SCREEN_BASE    0x8000
+.equ F_Wz           0xF000
+
+.equ LEM_MEM_MAP_SCREEN     0
+.equ LEM_MEM_MAP_FONT       1
+.equ LEM_MEM_MAP_PALETTE    2
+.equ LEM_SET_BORDER_COLOR   3
 
 .org BOOT_ORG
 
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;
                 ; boot(boot_device_id)
+                ; -> DNR
+                ;  * A B
+                ;
+                ; Begins the boot process.
+                ;
+                
 :boot           set a, pop
                 set sp, 0xffff ; throw away any extra parameters
                 
@@ -33,7 +58,15 @@
                 
                 set pc, boot2
                 
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;
                 ; scr_init()
+                ; -> void
+                ;  * A B C X Y I
+                ;
+                ; Initialises the screen device.
+                ;
+                
 :scr_init       set push, x
                 set push, y
                 set push, i
@@ -69,7 +102,7 @@
                 
                 ; Clear the screen ram
                 set a, SCREEN_BASE+32*12
-                set b, 0x20
+                set b, ' '
 :.clearnext     set [a], b
                 sub a, 1
                 ifg a, SCREEN_BASE-1
@@ -86,20 +119,35 @@
                 set x, pop
                 set pc, pop
                 
+                ; Here's the way this words.  BOOT_CUTOFF will always be set
+                ; to an address at or before 0x7200.  All code needed to
+                ; initialise the disk drive and read in the portions of the
+                ; bootloader above 0x7200 *must* fit below this cut-off.
+                ; The screen initialisation got thrown in because there was
+                ; room; waste not, want not!
 .org BOOT_CUTOFF
+                
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;
+                ; boot2()
+                ; -> DNR
+                ;  * A B X
+                ;
+                ; Continues boot.
+                ;
                 
 :boot2          ; Initialise the filesystem driver.
                 jsr fs_init
-                ifn a, 1
+                ifn a, SUCCESS
                     set pc, .fsfail
                     
                 ; Device driver and filesystem init'ed OK.
-                ; Locate HARDOS.SYS and load into memory
+                ; Locate the kernel and load into memory.
                 set x, LOAD_BASE
                 set a, FN_KERNEL
                 set b, x
                 jsr load_file
-                ifn a, 1
+                ifn a, SUCCESS
                     set pc, .dnl_kernel
                     
                 add x, b
@@ -107,7 +155,7 @@
                 jsr dd_get_driver
                 set b, x
                 jsr load_file
-                ifn a, 1
+                ifn a, SUCCESS
                     set pc, .dnl_dd
                 
                 add x, b
@@ -115,18 +163,18 @@
                 jsr fs_get_driver
                 set b, x
                 jsr load_file
-                ifn a, 1
+                ifn a, SUCCESS
                     set pc, .dnl_fs
                 
                 ; All done!
                 jsr start_kernel
                 
 :.ddfail        set a, MSG_DD_FAIL
-                jsr scr_putcsz
+                jsr scr_putpsz
                 jsr halt
 
 :.fsfail        set a, MSG_FS_FAIL
-                jsr scr_putcsz
+                jsr scr_putpsz
                 jsr halt
                 
 :.dnl_kernel    set a, MSG_DNL_KERN
@@ -138,33 +186,40 @@
 :.dnl_fs        set a, MSG_DNL_FS
                 set pc, .dnl_tail
                 
-:.dnl_tail      jsr scr_putcsz
+:.dnl_tail      jsr scr_putpsz
                 jsr scr_nl
                 set a, MSG_CANT_BOOT
-                jsr scr_putcsz
+                jsr scr_putpsz
                 jsr halt
                 
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;
                 ; load_file(A = path, B = dest)
-                ; = A success, B size
+                ; -> A = success, B = size
+                ;  * A B C X Y
+                ;
+                ; Loads a file into memory at the specified base address.
+                ; Returns the number of words loaded.
+                ;
+                
 :load_file      set push, x
                 set push, y
                 set x, b
                 
                 jsr fs_find_file
-                ife a, 0
+                ife a, FAILURE
                     set pc, .fail0
                 
                 set a, b
                 jsr fs_open_handle
-                ife a, 0
+                ife a, FAILURE
                     set pc, .fail0
                 
                 set push, a
                 set y, 0
 :.next          set a, peek
-                jsr fs_read
-                ; = A success, B buffer, C words_read
-                ife a, 0
+                jsr fs_read ; -> A = success, B = buffer, C = words_read
+                ife a, FAILURE
                     set pc, .fail1
                     
                 ife c, 0
@@ -181,33 +236,59 @@
                 set pc, pop
                 
 :.fail1         add sp, 1
-                set a, 0
+                set a, FAILURE
                 set y, pop
                 set x, pop
                 set pc, pop
                 
 :.done          add sp, 1
-                set a, 1
+                set a, SUCCESS
                 set b, y
                 set y, pop
                 set x, pop
                 set pc, pop
 
+                
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;
                 ; start_kernel()
-                ; Gets the kernel running.
+                ; -> DNR
+                ;  * -
+                ;
+                ; Starts the kernel up.
+                ;
+                
 :start_kernel   ; Clear the stack.
                 set sp, 0xffff
                 ; Jump into the kernel
                 set pc, __krn_entry
+                
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;
+                ; halt()
+                ; -> DNR
+                ;  * -
+                ;
+                ; Halts the computer.
+                ;
 
 :halt           sub pc, 1
 
-                ; memcpy(A dst, B src, C len)
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;
+                ; memcpy(A = dst, B = src, C = len)
+                ; -> -
+                ;  * A B C I J
+                ;
+                ; Copies len words from src to dst.
+                ;
+                
 :memcpy         set push, i
                 set push, j
                 set i, a
                 set j, b
                 
+                ; 8 * unrolled copy loop.
 :.next8         ifl c, 8
                     set pc, .finish
                     
@@ -231,14 +312,26 @@
 :.return        set j, pop
                 set i, pop
                 set pc, pop
-
-                ; scr_putcsz(A csz, B format)
-:scr_putcsz     set push, i
+                
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;
+                ; scr_putpsz(A = psz, B = format)
+                ; -> -
+                ;  * A B C I
+                ;
+                ; Puts a given packed, zero-terminated screen to the screen.
+                ; It will correctly interpret \n and \r\n newline sequences,
+                ; but nothing else.
+                ;
+                
+:scr_putpsz     set push, i
                 set c, [SCREEN_OFF]
                 add c, SCREEN_BASE
                 
+                ; Put high character
 :.next0         set i, [a]
-                and i, 0xff
+                shr i, 8
+                and i, 0x7f
                 ife i, 0
                     set pc, .done_0
                 ife i, 0x0d
@@ -248,9 +341,10 @@
 :.print0        bor i, b
                 set [c], i
                 
+                ; Put low character
 :.next1         add c, 1
                 set i, [a]
-                shr i, 8
+                and i, 0x7f
                 ife i, 0
                     set pc, .done_0
                 ife i, 0x0d
@@ -264,6 +358,7 @@
                 add a, 1
                 set pc, .next0
                 
+                ; High newline
 :.nl0           set push, a
                 jsr scr_nl
                 set a, pop
@@ -271,6 +366,7 @@
                 add c, SCREEN_BASE
                 set pc, .next1
 
+                ; Low newline
 :.nl1           set push, a
                 jsr scr_nl
                 set a, pop
@@ -281,8 +377,16 @@
 :.done_0        set i, pop
                 set pc, pop
 
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;
                 ; scr_nl()
-                ; * A
+                ; -> -
+                ;  * A
+                ;
+                ; Move to the next line on the screen.
+                ; TODO: Scroll the screen up when at the bottom.
+                ;
+                
 :scr_nl         set a, [SCREEN_OFF]
                 and a, 0xFFDF
                 add a, 1
@@ -291,32 +395,24 @@
                 
                 set [SCREEN_OFF], a
 
-                ; "HARDOS\0\0SYS\0"
-:FN_KERNEL      dat 0x4841,0x5244,0x4f53,0x0000,0x5359,0x5300
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;
+                ; Static data.
+                ;
+                
+:FN_KERNEL      dat p"KERNEL\0\0SYS\0"
+:MSG_DD_FAIL    dat p"Disk drive failure.\0"
+:MSG_FS_FAIL    dat p"Boot disk corrupted.\0"
+:MSG_DNL_KERN   dat p"Cannot find KERNEL.SYS.\0"
+:MSG_DNL_DD     dat p"Cannot find disk driver.\0"
+:MSG_DNL_FS     dat p"Cannot find filesystem driver.\0"
+:MSG_CANT_BOOT  dat p"System cannot boot.\0"
 
-                ; "Disk drive failure."
-:MSG_DD_FAIL    dat 0x4469,0x736b,0x2064,0x7269,0x7665,0x2066,0x6169,0x6c75
-                dat 0x7265,0x2e00
-
-                ; "Boot disk corrupted."
-:MSG_FS_FAIL    dat 0x426f,0x6f74,0x2064,0x6973,0x6b20,0x636f,0x7272,0x7570
-                dat 0x7465,0x642e,0x0000
-                
-                ; "Cannot find HARDOS.SYS."
-:MSG_DNL_KERN   dat 0x4361,0x6e6e,0x6f74,0x2066,0x696e,0x6420,0x4841,0x5244
-                dat 0x4f53,0x2e53,0x5953,0x2e00
-                
-                ; "Cannot find disk driver."
-:MSG_DNL_DD     dat 0x4361,0x6e6e,0x6f74,0x2066,0x696e,0x6420,0x6469,0x736b
-                dat 0x2064,0x7269,0x7665,0x722e,0x0000
-                
-                ; "Cannot find filesystem driver."
-:MSG_DNL_FS     dat 0x4361,0x6e6e,0x6f74,0x2066,0x696e,0x6420,0x6669,0x6c65
-                dat 0x7379,0x7374,0x656d,0x2064,0x7269,0x7665,0x722e,0x0000
-                
-                ; "System cannot boot."
-:MSG_CANT_BOOT  dat 0x5379,0x7374,0x656d,0x2063,0x616e,0x6e6f,0x7420,0x626f
-                dat 0x6f74,0x2e00
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 .org BOOT_END
                 sub pc, 1

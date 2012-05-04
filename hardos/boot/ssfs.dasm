@@ -6,25 +6,55 @@
 ; Authors: Daniel Keep.
 ;
 
-; This driver file only provides basic read access to a SSFS.
+;
+; This driver file only provides basic read access to a SSFS.  It currently
+; not read past the first directory sector, limiting it to searching the first
+; 64 files on the disk.
+;
+
+.include "loader.i"
 
 ;
 ; State for the current file handle.
 ;
 
-:HANDLE         .equ BOOT_FS_VARS
-:NEXT_SECTOR    .equ HANDLE + 1
-:WORDS_LEFT     .equ NEXT_SECTOR + 1
+.equ HANDLE         BOOT_FS_VARS
+.equ NEXT_SECTOR    HANDLE + 1
+.equ WORDS_LEFT     NEXT_SECTOR + 1
+.equ SECTOR_SIZE    WORDS_LEFT + 1
+.equ SECTOR_PAYLOAD  SECTOR_SIZE + 1
 
 ;
 ; Variables stored in the boot sector
 ;
 
-:BS_MAGIC_0     .equ 0x7002
-:BS_MAGIC_1     .equ 0x7003
-:BS_VERSION     .equ 0x7004
-:BS_FIRST_FREE  .equ 0x7005
-:BS_FIRST_RAW   .equ 0x7006
+.equ BS_MAGIC_0     0x7002
+.equ BS_MAGIC_1     0x7003
+.equ BS_VERSION     0x7004
+.equ BS_FIRST_FREE  0x7005
+.equ BS_DIRECTORY   0x7006
+
+;
+; Constants.
+;
+
+.equ TRUE           1
+.equ FALSE          0
+
+.equ SUCCESS        1
+.equ FAILURE        0
+
+.equ SSFS_VERSION_MAJOR     0x01
+.equ SSFS_VERSION_MINOR     0x00
+
+.equ DIR_FILES_PER_SECTOR   64
+.equ DIR_NO_MORE_FILES      0x0000
+.equ DIR_EMPTY_ENTRY        0xFFFF
+.equ DIR_ENTRY_SIZE         8
+.equ DIR_ENTRY_NAME         0
+.equ DIR_ENTRY_NAME_LEN     6
+.equ DIR_ENTRY_START        6
+.equ DIR_ENTRY_LENGTH       7
 
 ;
 ; Landing pads.
@@ -47,37 +77,57 @@
 
 .org BOOT_FS_CODE
 
-                    ; fs_init()
-                    ; = A success
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ssfs_init()
+                    ; -> A = success
+                    ;  * A B
+                    ;
+                    ; Initialises the filesystem driver.
+                    ;
+
 :ssfs_init          ; First, check signature and version
-                    ifn [BS_MAGIC_0], 0x5353
+                    ifn [BS_MAGIC_0], 0x5353 ; p"SS"
                         set pc, .badsig
-                    ifn [BS_MAGIC_1], 0x4653
+                    ifn [BS_MAGIC_1], 0x5446 ; p"FS"
                         set pc, .badsig
                     
                     set a, [BS_VERSION]
                     shr a, 8
-                    ifn a, 1
+                    ifn a, SSFS_VERSION_MAJOR
                         set pc, .badver
+                        
+                    ; Ask the dd how big a sector is.
+                    jsr dd_get_sector_size
+                    set [SECTOR_SIZE], a
                     
-                    ; All good.  Read the first directory sector into memory
+                    ; Cache how many words are actually stored in a data sector.
+                    sub a, 1
+                    set [SECTOR_PAYLOAD], a
+                    
+                    ; Read the first directory sector into memory.
                     set a, 1
                     set b, BOOT_BUFFER_FS_0
                     jsr dd_read_sector
                     
                     ; Done.
-                    set a, 1
+                    set a, SUCCESS
                     set pc, pop
                     
-:.badsig            set a, 0
+:.badsig            set a, FAILURE
                     set pc, pop
                     
-:.badver            set a, 0
+:.badver            set a, FAILURE
                     set pc, pop
                     
-                    ; fs_find_file(A path)
-                    ; = A success, B handle
-                    ; * A B C
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ssfs_find_file(A = path)
+                    ; -> A = success,
+                    ;    B = handle
+                    ;  * A B C
+                    ;
+                    
 :ssfs_find_file     ; We're only going to bother searching the first directory
                     ; sector.  If files the bootloader needs are outside that,
                     ; well, that's just too bad.  In a later version, we can 
@@ -85,44 +135,70 @@
                     set push, i
                     set push, a
                     set i, 0xffff
-                    set c, 6
                     
 :.nextfile          add i, 1
-                    ife i, 8
+                    ife i, DIR_FILES_PER_SECTOR
                         set pc, .notfound
                     set a, peek
                     set b, i
-                    mul b, 8
+                    mul b, DIR_ENTRY_SIZE
                     add b, [BOOT_BUFFER_FS_0]
-                    set c, 6
-                    jsr csz_eql
-                    ife a, 0
+                    set c, DIR_ENTRY_NAME_LEN
+                    jsr psz_equals
+                    
+                    ife a, FALSE
                         set pc, .nextfile
                         
-:.found             set b, i
-                    mul b, 8
+:.found             set a, SUCCESS
+                    set b, i
+                    mul b, DIR_ENTRY_SIZE
                     add b, [BOOT_BUFFER_FS_0]
                     set pc, .return
                         
-:.notfound          set a, 0
+:.notfound          set a, FAILURE
                     ; set pc, .return
                     
 :.return            add sp, 1
                     set i, pop
                     set pc, pop
                     
-                    ; fs_open_handle(A handle)
-                    ; * A B
-:ssfs_open_handle   set [HANDLE], a
-                    set [NEXT_SECTOR], [a+6]
-                    set b, [a+7]
-                    shr b, 1
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ssfs_open_handle(A = handle)
+                    ; -> void
+                    ;  * A B
+                    ;
+                    ; Opens the specified handle as the current file.  This must
+                    ; be done before any calls to ssfs_read.
+                    ;
+                    
+:ssfs_open_handle   ; Store the "handle," which is really just the address
+                    ; within the directory sector.
+                    set [HANDLE], a
+                    
+                    ; Get the first sector containing file data.
+                    set [NEXT_SECTOR], [a + DIR_ENTRY_START]
+                    
+                    ; Get the number of words in the file.
+                    set b, [a + DIR_ENTRY_LENGTH]
                     set [WORDS_LEFT], b
+                    
                     set pc, pop
                     
-                    ; fs_read()
-                    ; = A success, B buffer, C words_read
-                    ; * A B C
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ssfs_read()
+                    ; -> A = success, B = buffer, C = words_read
+                    ;  * A B C
+                    ; 
+                    ; Reads the next chunk of words from the currently open
+                    ; file.  On success, the address of the first word is
+                    ; returned along with the number of words read.
+                    ;
+                    ; If there is no more data to read from the file,  the
+                    ; function returns a buffer address and word count of 0.
+                    ;
+                    
 :ssfs_read          ; If there is nothing left to read, signal eof.
                     ife [WORDS_LEFT], 0
                         set pc, .ateof
@@ -131,55 +207,77 @@
                     set a, [NEXT_SECTOR]
                     set b, BOOT_BUFFER_FS_1
                     jsr dd_read_sector
-                    ifn a, 1
+                    ife a, FAILURE
                         set pc, .failed
                         
                     ; Update next sector
-                    set [NEXT_SECTOR], [BOOT_BUFFER_FS_1+1]
-                        
-                    set a, 1
+                    set [NEXT_SECTOR], [BOOT_BUFFER_FS_1] ; this was +1; why?
+                    
+                    ; Return 1, BOOT_BUFFER_FS_1+1, 512
+                    set a, SUCCESS
                     set b, BOOT_BUFFER_FS_1
                     add b, 1
-                    set c, 511 ; HACK!
+                    set c, [SECTOR_PAYLOAD]
                     set pc, pop
                     
-:.failed            set a, 0
+:.failed            set a, FAILURE
                     set pc, pop
                     
-:.ateof             set a, 1
+:.ateof             set a, SUCCESS
                     set b, 0
                     set c, 0
                     set pc, pop
                     
-                    ; fs_get_drive()
-                    ; = A filename
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; fs_get_driver()
+                    ; -> A = filename
+                    ;  * A
+                    ;
+                    ; Returns the filename of the full driver for this
+                    ; filesystem.
+                    ;
+                    
 :ssfs_get_driver    set a, FN_DRIVER
                     set pc, pop
 
-                    ; csz_eq(A, B, C length)
-                    ; = A equal?
-                    ; Compares two compact zero-terminated string for 
-                    ; equality.
-:csz_eql            ife c, 0
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; psz_equals(A, B, C = length)
+                    ; -> A = equal?
+                    ; 
+                    ; Compares two packed, zero-terminated strings for equality.
+                    ; The comparison stops after length characters, assuming
+                    ; they are equal.
+                    ;
+                    
+:psz_equals         ife c, 0
                         set pc, .equal
                     ifn [a], [b]
                         set pc, .noteq
                     add a, 1
                     add b, 1
-                    set pc, csz_eql
+                    set pc, psz_equals
                     
-:.equal             set a, 1
+:.equal             set a, TRUE
                     set pc, pop
                     
-:.noteq             set a, 0
+:.noteq             set a, FALSE
                     set pc, pop
 
-                    ; "SSFS\0\0\0\0DRV\0"
-:FN_DRIVER          dat 0x5353,0x4653,0x0000,0x0000,0x4452,0x5600
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data
+                    ;
                     
-                    ; "Bad disk format.\0"
-:ERR_BADFORMAT      dat 0x4261,0x6420,0x6469,0x736b,0x2066,0x6f72,0x6d61,0x742e
-                    dat 0x0020,0x0000    
+:FN_DRIVER          dat p"SSFS\0\0\0\0DRV\0"
+:ERR_BADFORMAT      dat p"Bad disk format.\0"
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     
 .org BOOT_FS_END
                     sub pc, 1
