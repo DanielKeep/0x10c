@@ -5,7 +5,7 @@ namespace Dk.x10c.Ssfs
 {
     public static class Codecs
     {
-        public static int PackInto(this string s, ushort[] dest, int offset = 0, bool littleEndian = true, byte fill = 0)
+        public static int PackInto(this string s, ushort[] dest, int offset = 0, bool littleEndian = false, byte fill = 0)
         {
             int lo = 0, ho = 1;
             if (!littleEndian)
@@ -32,12 +32,12 @@ namespace Dk.x10c.Ssfs
             return fullWordChars;
         }
 
-        public static int PackInto(this string s, ArraySegment<ushort> dest, int offset = 0, bool littleEndian = true, byte fill = 0)
+        public static int PackInto(this string s, ArraySegment<ushort> dest, int offset = 0, bool littleEndian = false, byte fill = 0)
         {
             return s.PackInto(dest.Array, offset + dest.Offset, littleEndian, fill);
         }
 
-        public static string UnpackString(this ushort[] src, int offset = 0, int limit = -1, bool littleEndian = true, byte term = 0)
+        public static string UnpackString(this ushort[] src, int offset = 0, int limit = -1, bool littleEndian = false, byte term = 0)
         {
             if (limit < 0)
                 limit = src.Length - offset;
@@ -70,7 +70,7 @@ namespace Dk.x10c.Ssfs
             return new String(bytes.ToArray());
         }
 
-        public static string UnpackString(this ArraySegment<ushort> src, int offset = 0, int limit = -1, bool littleEndian = true, byte term = 0)
+        public static string UnpackString(this ArraySegment<ushort> src, int offset = 0, int limit = -1, bool littleEndian = false, byte term = 0)
         {
             return src.Array.UnpackString(offset + src.Offset, limit, littleEndian, term);
         }
