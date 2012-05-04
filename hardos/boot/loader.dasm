@@ -1,6 +1,6 @@
 
 .include "loader.i"
-.include "../syscall.i"
+.include "../kernel/syscall.i"
 
 ;
 ; Variables.
