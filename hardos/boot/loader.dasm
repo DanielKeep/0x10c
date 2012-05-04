@@ -1,0 +1,322 @@
+
+:SCREEN_OFF     .equ BOOT_VARS
+
+:LOAD_BASE      .equ 0x0000
+:SCREEN_BASE    .equ 0x8000
+:F_Wz           .equ 0xF000
+
+:LEM_MEM_MAP_SCREEN     .equ 0
+:LEM_MEM_MAP_FONT       .equ 1
+:LEM_MEM_MAP_PALETTE    .equ 2
+:LEM_SET_BORDER_COLOR   .equ 3
+
+.org BOOT_ORG
+
+                ; boot(boot_device_id)
+:boot           set a, pop
+                set sp, 0xffff ; throw away any extra parameters
+                
+                ; Initialise the screen.
+                set push, a
+                jsr scr_init
+                set a, pop
+                
+                ; Initialise the disk driver.
+                jsr dd_init
+                ifn a, 1
+                    set pc, .ddfail
+                    
+                ; Read second sector
+                set a, 1
+                set b, BOOT_HIGH
+                jsr dd_read_sector
+                
+                set pc, boot2
+                
+                ; scr_init()
+:scr_init       set push, x
+                set push, y
+                set push, i
+                hwn i
+:.nextdev       sub i, 1
+                ife i, 0xffff
+                    jsr halt
+                hwq i
+                ifn a, 0xf615
+                    set pc, .nextdev
+                ifn b, 0x7349
+                    set pc, .nextdev
+                
+                ; Found the screen.
+                set [SCREEN_OFF], 0
+                
+                ; Reset the mem maps and border colour
+                set a, LEM_MEM_MAP_SCREEN
+                set b, 0
+                hwi i
+                
+                set a, LEM_MEM_MAP_FONT
+                set b, 0
+                hwi i
+                
+                set a, LEM_MEM_MAP_PALETTE
+                set b, 0
+                hwi i
+                
+                set a, LEM_SET_BORDER_COLOR
+                set b, 0
+                hwi i
+                
+                ; Clear the screen ram
+                set a, SCREEN_BASE+32*12
+                set b, 0x20
+:.clearnext     set [a], b
+                sub a, 1
+                ifg a, SCREEN_BASE-1
+                    set pc, .clearnext
+                    
+                ; Re-map screen
+                set a, LEM_MEM_MAP_SCREEN
+                set b, SCREEN_BASE
+                hwi i
+                
+                ; All done!
+                set i, pop
+                set y, pop
+                set x, pop
+                set pc, pop
+                
+.org BOOT_CUTOFF
+                
+:boot2          ; Initialise the filesystem driver.
+                jsr fs_init
+                ifn a, 1
+                    set pc, .fsfail
+                    
+                ; Device driver and filesystem init'ed OK.
+                ; Locate HARDOS.SYS and load into memory
+                set x, LOAD_BASE
+                set a, FN_KERNEL
+                set b, x
+                jsr load_file
+                ifn a, 1
+                    set pc, .dnl_kernel
+                    
+                add x, b
+                
+                jsr dd_get_driver
+                set b, x
+                jsr load_file
+                ifn a, 1
+                    set pc, .dnl_dd
+                
+                add x, b
+                
+                jsr fs_get_driver
+                set b, x
+                jsr load_file
+                ifn a, 1
+                    set pc, .dnl_fs
+                
+                ; All done!
+                jsr start_kernel
+                
+:.ddfail        set a, MSG_DD_FAIL
+                jsr scr_putcsz
+                jsr halt
+
+:.fsfail        set a, MSG_FS_FAIL
+                jsr scr_putcsz
+                jsr halt
+                
+:.dnl_kernel    set a, MSG_DNL_KERN
+                set pc, .dnl_tail
+
+:.dnl_dd        set a, MSG_DNL_DD
+                set pc, .dnl_tail
+
+:.dnl_fs        set a, MSG_DNL_FS
+                set pc, .dnl_tail
+                
+:.dnl_tail      jsr scr_putcsz
+                jsr scr_nl
+                set a, MSG_CANT_BOOT
+                jsr scr_putcsz
+                jsr halt
+                
+                ; load_file(A = path, B = dest)
+                ; = A success, B size
+:load_file      set push, x
+                set push, y
+                set x, b
+                
+                jsr fs_find_file
+                ife a, 0
+                    set pc, .fail0
+                
+                set a, b
+                jsr fs_open_handle
+                ife a, 0
+                    set pc, .fail0
+                
+                set push, a
+                set y, 0
+:.next          set a, peek
+                jsr fs_read
+                ; = A success, B buffer, C words_read
+                ife a, 0
+                    set pc, .fail1
+                    
+                ife c, 0
+                    set pc, .done
+                
+                set a, x
+                add x, c
+                add y, c
+                jsr memcpy
+                set pc, .next
+                
+:.fail0         set y, pop
+                set x, pop
+                set pc, pop
+                
+:.fail1         add sp, 1
+                set a, 0
+                set y, pop
+                set x, pop
+                set pc, pop
+                
+:.done          add sp, 1
+                set a, 1
+                set b, y
+                set y, pop
+                set x, pop
+                set pc, pop
+
+                ; start_kernel()
+                ; Gets the kernel running.
+:start_kernel   ; Clear the stack.
+                set sp, 0xffff
+                ; Jump into the kernel
+                set pc, __krn_entry
+
+:halt           sub pc, 1
+
+                ; memcpy(A dst, B src, C len)
+:memcpy         set push, i
+                set push, j
+                set i, a
+                set j, b
+                
+:.next8         ifl c, 8
+                    set pc, .finish
+                    
+                sti [i], [j]
+                sti [i], [j]
+                sti [i], [j]
+                sti [i], [j]
+                sti [i], [j]
+                sti [i], [j]
+                sti [i], [j]
+                sti [i], [j]
+                sub c, 8
+                set pc, .next8
+                
+:.finish        ife c, 0
+                    set pc, .return
+                sti [i], [j]
+                sub c, 1
+                set pc, .finish
+                
+:.return        set j, pop
+                set i, pop
+                set pc, pop
+
+                ; scr_putcsz(A csz, B format)
+:scr_putcsz     set push, i
+                set c, [SCREEN_OFF]
+                add c, SCREEN_BASE
+                
+:.next0         set i, [a]
+                and i, 0xff
+                ife i, 0
+                    set pc, .done_0
+                ife i, 0x0d
+                    set pc, .next1
+                ife i, 0x0a
+                    set pc, .nl0
+:.print0        bor i, b
+                set [c], i
+                
+:.next1         add c, 1
+                set i, [a]
+                shr i, 8
+                ife i, 0
+                    set pc, .done_0
+                ife i, 0x0d
+                    set pc, .next2
+                ife i, 0x0a
+                    set pc, .nl1
+:.print1        bor i, b
+                set [c], i
+                
+:.next2         add c, 1
+                add a, 1
+                set pc, .next0
+                
+:.nl0           set push, a
+                jsr scr_nl
+                set a, pop
+                set c, [SCREEN_OFF]
+                add c, SCREEN_BASE
+                set pc, .next1
+
+:.nl1           set push, a
+                jsr scr_nl
+                set a, pop
+                set c, [SCREEN_OFF]
+                add c, SCREEN_BASE
+                set pc, .next2
+                
+:.done_0        set i, pop
+                set pc, pop
+
+                ; scr_nl()
+                ; * A
+:scr_nl         set a, [SCREEN_OFF]
+                and a, 0xFFDF
+                add a, 1
+                ife a, 12
+                    set a, 0
+                
+                set [SCREEN_OFF], a
+
+                ; "HARDOS\0\0SYS\0"
+:FN_KERNEL      dat 0x4841,0x5244,0x4f53,0x0000,0x5359,0x5300
+
+                ; "Disk drive failure."
+:MSG_DD_FAIL    dat 0x4469,0x736b,0x2064,0x7269,0x7665,0x2066,0x6169,0x6c75
+                dat 0x7265,0x2e00
+
+                ; "Boot disk corrupted."
+:MSG_FS_FAIL    dat 0x426f,0x6f74,0x2064,0x6973,0x6b20,0x636f,0x7272,0x7570
+                dat 0x7465,0x642e,0x0000
+                
+                ; "Cannot find HARDOS.SYS."
+:MSG_DNL_KERN   dat 0x4361,0x6e6e,0x6f74,0x2066,0x696e,0x6420,0x4841,0x5244
+                dat 0x4f53,0x2e53,0x5953,0x2e00
+                
+                ; "Cannot find disk driver."
+:MSG_DNL_DD     dat 0x4361,0x6e6e,0x6f74,0x2066,0x696e,0x6420,0x6469,0x736b
+                dat 0x2064,0x7269,0x7665,0x722e,0x0000
+                
+                ; "Cannot find filesystem driver."
+:MSG_DNL_FS     dat 0x4361,0x6e6e,0x6f74,0x2066,0x696e,0x6420,0x6669,0x6c65
+                dat 0x7379,0x7374,0x656d,0x2064,0x7269,0x7665,0x722e,0x0000
+                
+                ; "System cannot boot."
+:MSG_CANT_BOOT  dat 0x5379,0x7374,0x656d,0x2063,0x616e,0x6e6f,0x7420,0x626f
+                dat 0x6f74,0x2e00
+
+.org BOOT_END
+                sub pc, 1

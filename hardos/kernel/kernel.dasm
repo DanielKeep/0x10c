@@ -1,0 +1,112 @@
+
+.org 0x0000
+    dat 0
+    
+.org 0x0010
+    set pc, krn_syscall
+    
+.org 0x0012
+    set pc, __krn_init
+    
+.org 0x0014
+    set pc, __krn_drv_init_addr
+    
+.org 0x0016
+    set pc, __krn_entry
+    
+:krn_syscall        add a, SYSCALL_TABLE
+                    set pc, [a]
+
+:SYSCALL_TABLE      dat krn_terminate
+                    dat krn_break
+                    dat krn_set_exit_handler
+                    dat krn_set_break_handler
+                    dat krn_exec
+                    
+                    dat krn_con_getch
+                    dat krn_con_ignore
+                    dat krn_con_clear
+                    dat krn_con_putch
+                    dat krn_con_getcur
+                    dat krn_con_setcur
+                    dat krn_con_getfmt
+                    dat krn_con_setfmt
+                    
+                    dat krn_fs_exists
+                    dat krn_fs_get_attrs
+                    dat krn_fs_first_file
+                    dat krn_fs_next_file
+                    
+                    dat krn_file_open
+                    dat krn_file_close
+                    dat krn_file_seek
+                    dat krn_file_write
+                    dat krn_file_read
+                    
+                    dat krn_drv_load_path
+
+                    ; __krn_init()
+                    ; Performs basic initialisation of the kernel.  This
+                    ; function has to do enough that the disk and filesystem
+                    ; drivers can be initialised.
+:__krn_init         set pc, pop
+
+                    ; __krn_drv_init_addr(A = addr, B = extra0, C = extra1)
+                    ; Initialises the driver loaded starting at addr.  Arguments
+                    ; extra0 and extra1 are passed along to the driver.
+:__krn_drv_init_addr
+                    jsr a
+                    set pc, pop
+                    
+                    ; __krn_entry() DNR
+                    ; Starts the kernel and continues initialisation.
+                    ; This subroutine does not return.
+:__krn_entry        sub pc, 1
+
+:krn_terminate      dat 0
+
+:krn_break          dat 0
+
+:krn_set_exit_handler
+                    dat 0
+                    
+:krn_set_break_handler
+                    dat 0
+                    
+:krn_exec           dat 0
+                    
+:krn_con_getch      dat 0
+                    
+:krn_con_ignore     dat 0
+                    
+:krn_con_clear      dat 0
+                    
+:krn_con_putch      dat 0
+                    
+:krn_con_getcur     dat 0
+                    
+:krn_con_setcur     dat 0
+                    
+:krn_con_getfmt     dat 0
+                    
+:krn_con_setfmt     dat 0
+                    
+:krn_fs_exists      dat 0
+
+:krn_fs_get_attrs   dat 0
+                    
+:krn_fs_first_file  dat 0
+                    
+:krn_fs_next_file   dat 0
+                    
+:krn_file_open      dat 0
+                    
+:krn_file_close     dat 0
+                    
+:krn_file_seek      dat 0
+                    
+:krn_file_read      dat 0
+                    
+:krn_file_write     dat 0
+                    
+:krn_drv_load_path  dat 0

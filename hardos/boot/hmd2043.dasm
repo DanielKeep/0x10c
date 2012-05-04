@@ -1,0 +1,64 @@
+
+:DEVICE_ID          .equ BOOT_DD_VARS
+                    
+:HMD_QUERY_MEDIA_PRESENT    .equ 0x0000
+:HMD_QUERY_MEDIA_PARAMETERS .equ 0x0001
+:HMD_QUERY_DEVICE_FLAGS     .equ 0x0002
+:HMD_UPDATE_DEVICE_FLAGS    .equ 0x0003
+:HMD_QUERY_INTERRUPT_TYPE   .equ 0x0004
+:HMD_SET_INTERRUPT_MESSAGE  .equ 0x0005
+:HMD_READ_SECTORS           .equ 0x0010
+:HMD_WRITE_SECTORS          .equ 0x0011
+
+:HMD_ERROR_NONE             .equ 0x0000
+:HMD_ERROR_NO_MEDIA         .equ 0x0001
+:HMD_ERROR_INVALID_SECTOR   .equ 0x0002
+:HMD_ERROR_PENDING          .equ 0x0003
+
+:HMD_NON_BLOCKING           .equ 0x0001
+:HMD_MEDIA_STATUS_INTERRUPT .equ 0x0002
+
+:HMD_INT_NONE               .equ 0x0000
+:HMD_INT_MEDIA_STATUS       .equ 0x0001
+:HMD_INT_READ_COMPLETE      .equ 0x0002
+:HMD_INT_WRITE_COMPLETE     .equ 0x0003
+
+
+; Landing pads
+.org dd_init
+:land_init          set pc, hmd_init
+.org dd_read_sector
+:land_read_sector   set pc, hmd_read_sector
+.org dd_get_driver
+:land_get_driver    set pc, hmd_get_driver
+
+; Implementation
+.org BOOT_DD_CODE
+
+                    ; dd_init(A device_id)
+                    ; = A success
+:hmd_init           set [DEVICE_ID], a
+                    set pc, pop
+
+                    ; dd_read_sector(A sector, B buffer)
+                    ; = A success
+:hmd_read_sector    set push, x
+                    set x, b
+                    set c, 1
+                    set b, a
+                    set a, HMD_READ_SECTORS
+                    hwi [DEVICE_ID]
+                    set x, pop
+                    set pc, pop
+                    
+                    ; dd_get_driver()
+                    ; = A filename
+:hmd_get_driver     set a, FN_DRIVER
+                    set pc, pop
+                    
+                    ; "HMD2043\0DRV\0"
+:FN_DRIVER          dat 0x484d,0x4432,0x3034,0x3300,0x4452,0x5600
+
+; End of segment
+.org BOOT_DD_END
+                    sub pc, 1
