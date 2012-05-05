@@ -1,16 +1,20 @@
 
 .equ krn_syscall            0x0010
-.equ __krn_init             krn_syscall + 2
+.equ krn_sysvar             krn_syscall + 2
+.equ __krn_init             krn_sysvar + 2
 .equ __krn_drv_init_addr    __krn_init + 2
 .equ __krn_entry            __krn_drv_init_addr + 2
 
-.equ krn_terminate          0x0000
+.equ krn_panic              0
+.equ krn_terminate          krn_panic + 1
 .equ krn_break              krn_terminate + 1
 .equ krn_set_exit_handler   krn_break + 1
 .equ krn_set_break_handler  krn_set_exit_handler + 1
-.equ krn_exec               krn_set_break_handler + 1
+.equ krn_run                krn_set_break_handler + 1
 
-.equ krn_con_getch          krn_exec + 1
+.equ krn_scr_geometry       krn_run + 1
+
+.equ krn_con_getch          krn_scr_geometry + 1
 .equ krn_con_ignore         krn_con_getch + 1
 .equ krn_con_clear          krn_con_ignore + 1
 .equ krn_con_putch          krn_con_clear + 1

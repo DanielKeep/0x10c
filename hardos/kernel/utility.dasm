@@ -1,0 +1,28 @@
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ij_transfer(I = dest, J = src, C = length)
+                    ;
+                    ; Transfers data from src to dest.
+                    ;
+                    
+:ij_transfer        ifl c, 8
+                        set pc, ij_transfer.finish
+                    
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sub c, 8
+                    set pc, ij_transfer
+                    
+:ij_transfer.finish ife c, 0
+                        set pc, pop
+                    sti [i], [j]
+                    sub c, 1
+                    set pc, ij_transfer.finish
+                    

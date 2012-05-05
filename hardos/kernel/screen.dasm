@@ -1,0 +1,89 @@
+
+.include "syscall.i"
+
+                    ; Since it's kind of hard to let the user know if
+                    ; something's gone wrong without a screen, we'll provide
+                    ; default screen routines.
+                    ;
+                    ; These are for a "basic" subset of the LEM1802: it assumes
+                    ; the screen is mapped to 0x8000 and is 32x12 with 16-bit
+                    ; cells with a 7-bit ASCII-ish font.
+                    ;
+                    ; The display driver loaded later on can either build on top
+                    ; of these routines (leaving the screen where it is) or
+                    ; replace them entirely.
+
+.equ SCR_BASE       0x8000
+.equ SCR_WIDTH      32
+.equ SCR_HEIGHT     12
+.equ SCR_GEOMETRY   (SCR_WIDTH << 8) | SCR_HEIGHT
+.equ SCR_CELLS      SCR_WIDTH * SCR_HEIGHT
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_init() -> -
+                    ;
+                    ; Initialises the screen stuff.
+                    ;
+                    
+:scr_init           set a, krn_scr_geometry
+                    jsr krn_sysvar
+                    set [a], SCR_GEOMETRY
+                    
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; krn_scr_put_w(B = cell, C = xy) -> -
+                    ;
+                    ; Puts a value into the screen buffer at the given
+                    ; coordinates.
+                    ;
+                    
+:krn_scr_put_w      set a, c
+                    and a, 0xff
+                    mul a, SCR_WIDTH
+                    shr c, 8
+                    add a, c
+                    add a, SCR_BASE
+                    set [a], b
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; krn_scr_put_wsfl(B = address, C = xy, format, length)
+                    ;   -> words_output
+                    ;
+                    ; Puts an array of words into the screen buffer starting at
+                    ; the given coordinates.  Each word is masked with 0x7F then
+                    ; OR'd with the given format.
+                    ;
+                    ; The function will return once either length words are
+                    ; output or there is no remaining space on the screen.
+                    ;
+                    
+:krn_scr_put_wsfl   set push, i
+                    set push, j
+                    set a, [sp+1]
+                    
+                    set i, c
+                    and i, 0xff
+                    mul i, SCR_WIDTH
+                    shr c, 8
+                    add i, c
+                    
+                    set c, SCR_CELLS
+                    sub c, i
+                    
+                    add i, SCR_BASE
+                    
+                    set j, b
+                    
+                    ; LASTEDIT: set c = min([sp+2], c).
+                    
+                    jsr ij_transfer
+                    
+                    set j, pop
+                    set i, pop
+                    set pc, pop
+                    
