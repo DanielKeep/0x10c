@@ -1,0 +1,497 @@
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; The boot rom's job is to set up the keyboard and screen
+                    ; to old-skool addresses.
+                    ;
+                    ; It then tries to find and load a boot disk.  This
+                    ; involves the following:
+                    ;
+                    ; 1. Locate a floppy device.
+                    ; 2. Check that there is a disk inserted.
+                    ; 3. Load the first sector to 0x7000.
+                    ; 4. If the first word is non-zero, jump to it.
+                    ;
+                    ; Failing all of this, it displays a message telling the
+                    ; user that all is lost.
+                    ;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+.equ FALSE          0
+.equ TRUE           1
+
+.equ SCR_BASE       0x8000
+.equ SCR_FONT       0x8180
+
+.include "../includes/lem1802.i"
+.include "../includes/clock.i"
+.include "../includes/keyboard.i"
+.include "../includes/hmd2043.i"
+
+.org 0x0000
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; __entry() -> DNR
+                    ;
+                    ; Entry point for the boot ROM.
+                    ;
+                    
+:__entry            jsr scr_init
+                    jsr kb_init
+                    
+                    ; Look for a boot device.
+                    jsr dd_try_boot
+                    
+                    ; If we got here, then we didn't find a boot device.
+                    set a, MSG_NO_BOOT_DISK
+                    jsr scr_putpsz
+                    
+                    ; TODO: Embed a FORTH interpreter or something.  :P
+                    set pc, boot_panic
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_init() -> -
+                    ;
+                    ; Initialises the screen.
+                    ;
+                    ; This will set up the following memory map:
+                    ;
+                    ; 0x8000 - Screen cells
+                    ; 0x8180 - Font
+                    ;
+                    ; Note that it doesn't support a memory-mapped border colour
+                    ; since the 1802 doesn't support it.  We *could* do it with
+                    ; a clock interrupt but seriously, that's just a little
+                    ; excessive.
+                    ;
+                    
+:scr_init           set a, LEM1802_ID_L
+                    set b, LEM1802_ID_H
+                    set c, 0
+                    jsr hw_find ; A = index | -1
+                    ife a, -1
+                        set pc, boot_panic
+                    
+                    set c, a
+                    set [scr_id], a
+                    
+                    set a, LEM1802_MEM_MAP_SCREEN
+                    set b, SCR_BASE
+                    hwi c
+                    
+                    set a, LEM1802_MEM_MAP_FONT
+                    set b, SCR_FONT
+                    hwi c
+                    
+                    ; All done!
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_putpsz(A = string) -> -
+                    ;
+                    ; Writes a packed, zero-terminated string to the screen.
+                    ; This function will interpret newlines and print everything
+                    ; else.
+                    ;
+                    ; TODO: screen scrolling.
+                    ;
+                    
+:scr_putpsz         ; A = current screen address / offset
+                    ; B = format
+                    ; C = message
+                    ; I = character
+                    set push, i
+                    
+                    set c, a
+                    set a, [scr_cur]
+                    add a, SCR_BASE
+                    
+                    set b, [scr_format]
+                    
+                    ; Put high character
+:.next_word         set i, [c]
+                    shr i, 8
+                    and i, 0x7f
+                    
+                    ife i, 0
+                        set pc, .return
+                    ife i, '\n'
+                        set pc, .nl_h
+                    
+                    bor i, b
+                    set [a], i
+                    
+                    ; Put low character
+:.next_l            add a, 1
+                    set i, [c]
+                    and i, 0x7f
+                    
+                    ife i, 0
+                        set pc, .return
+                    ife i, '\n'
+                        set pc, .nl_l
+                    
+                    bor i, b
+                    set [a], i
+                    
+:.next_h            add a, 1
+                    add c, 1
+                    set pc, .next_word
+                    
+                    ; High newline
+:.nl_h              jsr .nl
+                    set pc, .next_l
+                    
+                    ; Low newline
+:.nl_l              jsr .nl
+                    set pc, .next_h
+                    
+                    ; Common newline code for either
+:.nl                set push, a
+                    set push, c
+                    jsr scr_nl
+                    set c, pop
+                    set b, [scr_format]
+                    set a, pop
+                    set pc, pop
+                    
+                    ; Calls scr_advance_from.  Note that we're calling a
+                    ; variant that explicitly preserves B and C.
+:.adv               sub a, SCR_BASE ; adjust back to raw offset
+                    jsr scr_advance_from_PrBC ; A = new offset
+                    add a, SCR_BASE ; adjust back to address
+                    set pc, pop
+                    
+                    ; Done
+:.return            set i, pop
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_advance_from(A = current offset) -> A = new offset
+                    ;
+                    ; Advances the given cursor to the next position, scrolling
+                    ; the screen if necessary.  Note that this ignores the
+                    ; current value of scr_cursor.
+                    ;
+                    
+:scr_advance_from_PrBC
+                    add a, 1
+                    
+                    ; If we are now at SCR_BASE + 32*12, we need to scroll the
+                    ; screen up one line and subtract 32 from the cursor.
+                    ifn a, 32*12
+                        set pc, pop
+                    
+                    set push, b
+                    set push, c
+                    jsr scr_scroll_up
+                    set c, pop
+                    set b, pop
+                    sub a, 32
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_nl_from(A = current offset) -> A = new offset
+                    ;
+                    ; Moves the current screen cursor to the next line.
+                    ;
+                    
+:scr_nl_from_PrBC   and a, 0xFFDF
+                    add a, 32
+                    ifl a, 32*12
+                        set pc, pop
+                    
+                    ; Need to scroll up.
+                    set push, b
+                    set push, c
+                    jsr scr_scroll_up
+                    set c, pop
+                    set b, pop
+                    sub a, 32
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_scroll_up() -> -
+                    ;
+                    ; Scrolls all lines on screen up by one.
+                    ;
+                    
+:scr_scroll_up      ; We can do this by doing a memcpy from 0x8000+32 to
+                    ; 0x8000, length 32*11; then, we memset 0x8000+32*11.
+                    set a, SCR_BASE
+                    set b, SCR_BASE+32
+                    set c, 32*11
+                    jsr memcpy
+                    
+                    set a, SCR_BASE+32*11
+                    set b, 0
+                    set c, 32
+                    jsr memset
+                    
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; kb_init() -> -
+                    ;
+                    ; Initialises the keyboard.
+                    ;
+
+:kb_init            set a, KB_ID_L
+                    set b, KB_ID_H
+                    set c, 0
+                    jsr hw_find ; A = index | -1
+                    ife a, -1
+                        set pc, .nokb ; not the end of the world
+                    
+                    set [kb_id], a
+                    
+:.nokb              ; All done!
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; dd_try_boot() -> -
+                    ;
+                    ; Searches for a boot disk; if it finds one, it boots from
+                    ; it.
+                    ;
+                    
+:dd_try_boot        set a, HMD2043_ID_L
+                    set b, HMD2043_ID_H
+                    set c, dd_can_boot_device
+                    jsr hw_find ; A = index | -1
+                    ife a, -1
+                        set pc, .noboot
+                    
+                    ; Ok, we have a boot disk device in A.
+                    set pc, boot_disk
+                    
+:.noboot            ; Nothing to boot.  Oh well.
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; dd_can_boot_device(A = device) -> TRUE | FALSE
+                    ;
+                    
+:dd_can_boot_device set push, z
+                    set z, a
+                    
+                    set a, HMD2043_QUERY_MEDIA_PRESENT
+                    hwi z
+                    ife b, FALSE
+                        set pc, .noboot
+                    
+                    ; Assume we're in non-blocking mode (the default)
+                    set a, HMD2043_READ_SECTORS
+                    set b, 0
+                    set c, 1
+                    set x, 0x7000
+                    hwi z
+                    ifn a, HMD2043_ERROR_NONE
+                        set pc, .noboot ; Something went wrong, don't care what.
+                    
+                    ife [0x7000], 0
+                        set pc, .noboot
+                    
+                    ; Looks bootable to me!
+                    set a, TRUE
+                    set pc, .return
+                    
+:.noboot            set a, FALSE
+:.return            set z, pop
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; hw_find(A:B = device id low:high, C = callback)
+                    ;   -> A = index | -1
+                    ;
+                    ; Locates a specified hardware device by id.  If a callback
+                    ; is supplied, then the callback is invoked when a matching
+                    ; device is found, with the device index passed in the A
+                    ; register.
+                    ;
+                    ; The callback should return TRUE to stop the search, FALSE
+                    ; to continue the search.
+                    ;
+                    
+:hw_find            set push, x
+                    set push, y
+                    set push, z
+                    set push, i
+                    set push, j
+                    set i, a
+                    set j, b
+                    set z, c
+                    hwn c
+:.next              sub c, 1
+                    ife c, 0xffff
+                        set pc, .notfound
+                    hwq c
+                    ifn a, i
+                        set pc, .next
+                    ifn b, j
+                        set pc, .next
+                    
+                    ; Got it!
+                    ifn z, 0
+                        set pc, .docallback
+                    
+                    ; Otherwise, assume done.
+:.done              set a, c
+                    set pc, .return
+                    
+:.docallback        ; We need to backup c
+                    set push, c
+                    set a, c
+                    jsr z
+                    set c, pop
+                    ife a, TRUE
+                        set pc, .done
+                    
+                    ; Continue the search
+                    set pc, .next
+                    
+:.notfound          set a, -1
+                    ; set pc, .return
+                    
+:.return            set j, pop
+                    set i, pop
+                    set y, pop
+                    set x, pop
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; boot_disk(A = device) -> DNR
+                    ;
+                    ; Starts booting from the given device.  This assumes that
+                    ; the first sector is already loaded into 0x7000.
+                    ;
+                    
+:boot_disk          ; First, clear the stack out.
+                    set sp, 0xffff
+                    
+                    ;
+                    ; Here is the stack layout bootloaders can expect:
+                    ;
+                    ; PICK 0:   boot_device_id
+                    ;
+                    
+                    set push, a
+                    
+                    ; Start the bootloader.
+                    set pc, 0x7000
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; boot_panic() -> DNR
+                    ;
+                    ; Called when the ROM encounters a situation it has no way
+                    ; of recovering from.  Really, should do beep codes, but the
+                    ; DCPU has no sound hardware yet.  :P
+                    ;
+                    
+:boot_panic         sub pc, 1
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; memcpy(A = dst, B = src, C = len) -> -
+                    ;
+                    ; Copies len words from src to dst.
+                    ;
+                    
+:memcpy             set push, i
+                    set push, j
+                    set i, a
+                    set j, b
+                    
+                    ; 8 * unrolled copy loop.
+:.next8             ifl c, 8
+                        set pc, .finish
+                        
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sub c, 8
+                    set pc, .next8
+                    
+:.finish            ife c, 0
+                        set pc, .return
+                    sti [i], [j]
+                    sub c, 1
+                    set pc, .finish
+                    
+:.return            set j, pop
+                    set i, pop
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; memset(A = dst, B = value, C = len) -> -
+                    ;
+                    ; Sets len words, starting at dst, to value.
+                    ;
+                    
+:memset             set push, i
+                    set push, j
+                    set i, a
+                    set j, 0 ; doesn't actually matter
+                    
+                    ; 8 * unrolled set loop.
+:.next8             ifl c, 8
+                        set pc, .finish
+                    
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sub c, 8
+                    set pc, .next8
+                    
+:.finish            ife c, 0
+                        set pc, .return
+                    sti [i], b
+                    sub c, 1
+                    set pc, .finish
+                    
+:.return            set j, pop
+                    set i, pop
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Variables.
+                    
+:scr_id             0xffff
+:scr_cur            0
+:scr_format         0xFF00
+
+:kb_id              0xffff
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data.
+
+:MSG_NO_BOOT_DISK   dat p"No boot disk found.\nInsert boot disk and reboot.\0"
