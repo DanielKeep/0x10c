@@ -2,7 +2,6 @@
 
 SET SSFS=..\tools\ssfs
 SET KASM=..\tools\kasm
-SET HEADERS=syscall.i
 SET OUT=bin\root
 SET RELOC=--relocatable
 SET DISK=bin\hardos01.disk
@@ -25,19 +24,25 @@ IF ERRORLEVEL 1 GOTO STOP
 
 REM Compile drivers.
 FOR %%F IN (drivers\*.dasm) DO (
-    %KASM% %HEADERS% %%F %RELOC% -o %OUT%\%%~nF.drv
+    %KASM% %%F %RELOC% -o %OUT%\%%~nF.drv
     IF ERRORLEVEL 1 GOTO STOP
 )
 
 REM Compile programs.
 FOR %%F IN (programs\*.dasm) DO (
-    %KASM% %HEADERS% %%F %RELOC% -o %OUT%\%%~nF.sro
+    %KASM% %%F %RELOC% -o %OUT%\%%~nF.sro
     IF ERRORLEVEL 1 GOTO STOP
 )
 
+REM Copy other files.
+COPY root\* bin\root\
+
 REM Create disk image.
-%SSFS% create -bboot\bin\bootload.bin -ppriority.txt %OUT% %DISK%
+%SSFS% create -r -bboot\bin\bootload.bin -ppriority.txt %OUT% %DISK%
 IF ERRORLEVEL 1 GOTO STOP
+
+REM Output file list.
+%SSFS% list %DISK%
 
 GOTO EOF
 
