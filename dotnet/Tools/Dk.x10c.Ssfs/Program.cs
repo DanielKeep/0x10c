@@ -127,7 +127,7 @@ namespace Dk.x10c.Ssfs
             //Compression compression = Compression.Zlib;
             //var encoding = Dk.x10c.Encoding.Base64;
             List<string> priorityList = new List<string>();
-            //bool raw = false;
+            bool raw = false;
             bool help = false;
 
             string disk = null,
@@ -147,6 +147,8 @@ namespace Dk.x10c.Ssfs
                     (Dk.x10c.Encoding a) => encoding = a},*/
                 {"p|priority-list=", "{FILE} containing list of files to add to filesystem first.",
                     a => UpdatePriorityList(priorityList, a)},
+                {"r|raw", "Output disk in raw big-endian.",
+                    a => raw = (a != null)},
                 {"help", "This message.",
                     a => help = (a != null)},
             };
@@ -265,7 +267,7 @@ namespace Dk.x10c.Ssfs
                 }
             }
 
-            fs.Disk.WriteTo(disk);
+            fs.Disk.WriteTo(disk, raw);
         }
 
         static void ListCmd(IEnumerable<string> args)
