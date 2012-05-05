@@ -24,9 +24,10 @@ namespace Dk.x10c.Ssfs
             }
             if ((s.Length & 1) == 1)
             {
-                var lc = s[s.Length - 1] & 0x7F;
-                var hc = fill;
-                dest[offset + fullWordChars] = (ushort)(lc + (hc << 8));
+                var c = s[s.Length - 1] & 0x7F;
+                dest[offset + fullWordChars] = littleEndian
+                    ? (ushort)(c | (fill << 8))
+                    : (ushort)(fill | (c << 8));
             }
 
             return fullWordChars;
@@ -58,13 +59,13 @@ namespace Dk.x10c.Ssfs
                 chs[lo] = (byte)(w);
                 chs[ho] = (byte)(w >> 8);
 
-                if (chs[lo] == term)
+                if (chs[0] == term)
                     break;
-                bytes.Add((char)chs[lo]);
+                bytes.Add((char)chs[0]);
 
-                if (chs[ho] == term)
+                if (chs[1] == term)
                     break;
-                bytes.Add((char)chs[ho]);
+                bytes.Add((char)chs[1]);
             }
 
             return new String(bytes.ToArray());
