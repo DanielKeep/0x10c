@@ -14,76 +14,185 @@
                     ; replace them entirely.
 
 .equ SCR_BASE       0x8000
+.equ SCR_FONT       0x8180
 .equ SCR_WIDTH      32
 .equ SCR_HEIGHT     12
 .equ SCR_GEOMETRY   (SCR_WIDTH << 8) | SCR_HEIGHT
 .equ SCR_CELLS      SCR_WIDTH * SCR_HEIGHT
-                    
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
-                    ; scr_init() -> -
+                    ; scr_init(A = device id, B = cursor, C = format) -> -
                     ;
                     ; Initialises the screen stuff.
                     ;
-                    
-:scr_init           set a, krn_scr_geometry
-                    jsr krn_sysvar
-                    set [a], SCR_GEOMETRY
-                    
+
+:scr_init           set [scr_id], a
+                    set [scr_cur], b
+                    set [scr_format], c
+
                     set pc, pop
-                    
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
-                    ; krn_scr_put_w(B = cell, C = xy) -> -
+                    ; scr_putpsz(A = string) -> -
                     ;
-                    ; Puts a value into the screen buffer at the given
-                    ; coordinates.
+                    ; Writes a packed, zero-terminated string to the screen.
+                    ; This function will interpret newlines and print everything
+                    ; else.
                     ;
-                    
-:krn_scr_put_w      set a, c
-                    and a, 0xff
-                    mul a, SCR_WIDTH
-                    shr c, 8
-                    add a, c
+
+:scr_putpsz         ; A = current screen address / offset
+                    ; B = format
+                    ; C = message
+                    ; I = character
+                    set push, i
+
+                    set c, a
+                    set a, [scr_cur]
                     add a, SCR_BASE
-                    set [a], b
+
+                    set b, [scr_format]
+
+                    ; Put high character
+:.next_word         set i, [c]
+                    shr i, 8
+                    and i, 0x7f
+
+                    ife i, 0
+                        set pc, .return
+                    ife i, '\n'
+                        set pc, .nl_h
+
+                    bor i, b
+                    set [a], i
+
+                    ; Put low character
+:.next_l            add a, 1
+                    set i, [c]
+                    and i, 0x7f
+
+                    ife i, 0
+                        set pc, .return
+                    ife i, '\n'
+                        set pc, .nl_l
+
+                    bor i, b
+                    set [a], i
+
+:.next_h            add a, 1
+                    add c, 1
+                    set pc, .next_word
+
+                    ; High newline
+:.nl_h              jsr .nl
+                    set pc, .next_l
+
+                    ; Low newline
+:.nl_l              jsr .nl
+                    set pc, .next_h
+
+                    ; Common newline code for either
+:.nl                set push, a
+                    set push, c
+                    jsr scr_nl
+                    set c, pop
+                    set b, [scr_format]
+                    set a, pop
                     set pc, pop
-                    
+
+                    ; Calls scr_advance_from.  Note that we're calling a
+                    ; variant that explicitly preserves B and C.
+:.adv               sub a, SCR_BASE ; adjust back to raw offset
+                    jsr scr_advance_from_PrBC ; A = new offset
+                    add a, SCR_BASE ; adjust back to address
+                    set pc, pop
+
+                    ; Done
+:.return            set i, pop
+                    set pc, pop
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
-                    ; krn_scr_put_wsfl(B = address, C = xy, format, length)
-                    ;   -> words_output
+                    ; scr_advance_from(A = current offset) -> A = new offset
                     ;
-                    ; Puts an array of words into the screen buffer starting at
-                    ; the given coordinates.  Each word is masked with 0x7F then
-                    ; OR'd with the given format.
+                    ; Advances the given cursor to the next position, scrolling
+                    ; the screen if necessary.  Note that this ignores the
+                    ; current value of scr_cursor.
                     ;
-                    ; The function will return once either length words are
-                    ; output or there is no remaining space on the screen.
-                    ;
-                    
-:krn_scr_put_wsfl   set push, i
-                    set push, j
-                    set a, [sp+1]
-                    
-                    set i, c
-                    and i, 0xff
-                    mul i, SCR_WIDTH
-                    shr c, 8
-                    add i, c
-                    
-                    set c, SCR_CELLS
-                    sub c, i
-                    
-                    add i, SCR_BASE
-                    
-                    set j, b
-                    
-                    ; LASTEDIT: set c = min([sp+2], c).
-                    
-                    jsr ij_transfer
-                    
-                    set j, pop
-                    set i, pop
+
+:scr_advance_from_PrBC
+                    add a, 1
+
+                    ; If we are now at SCR_BASE + 32*12, we need to scroll the
+                    ; screen up one line and subtract 32 from the cursor.
+                    ifn a, 32*12
+                        set pc, pop
+
+                    set push, b
+                    set push, c
+                    jsr scr_scroll_up
+                    set c, pop
+                    set b, pop
+                    sub a, 32
                     set pc, pop
-                    
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_nl_from(A = current offset) -> A = new offset
+                    ;
+                    ; Moves the current screen cursor to the next line.
+                    ;
+
+:scr_nl_from_PrBC   and a, 0xFFDF
+                    add a, 32
+                    ifl a, 32*12
+                        set pc, pop
+
+                    ; Need to scroll up.
+                    set push, b
+                    set push, c
+                    jsr scr_scroll_up
+                    set c, pop
+                    set b, pop
+                    sub a, 32
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_scroll_up() -> -
+                    ;
+                    ; Scrolls all lines on screen up by one.
+                    ;
+
+:scr_scroll_up      ; We can do this by doing a memcpy from 0x8000+32 to
+                    ; 0x8000, length 32*11; then, we memset 0x8000+32*11.
+                    set a, SCR_BASE
+                    set b, SCR_BASE+32
+                    set c, 32*11
+                    jsr memcpy
+
+                    set a, SCR_BASE+32*11
+                    set b, 0
+                    set c, 32
+                    jsr memset
+
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Variables.
+                    ;
+
+:scr_id             dat 0xffff
+:scr_cur            dat 0
+:scr_format         dat 0xf000
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data.
+                    ;

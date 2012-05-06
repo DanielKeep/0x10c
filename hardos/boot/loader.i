@@ -4,7 +4,7 @@
 .equ BOOT_DD_ORG    0x7020
 .equ BOOT_DD_END    0x70ff
 .equ BOOT_ORG       0x7100
-.equ BOOT_CUTOFF    0x7180
+.equ BOOT_CUTOFF    0x7200 ; 0x7180
 .equ BOOT_END       0x72ff
 .equ BOOT_FS_ORG    0x7300
 .equ BOOT_FS_END    0x73ff

@@ -12,9 +12,9 @@
 .equ krn_set_break_handler  krn_set_exit_handler + 1
 .equ krn_run                krn_set_break_handler + 1
 
-.equ krn_scr_geometry       krn_run + 1
+.equ __krn_empty_0000       krn_run + 1
 
-.equ krn_con_getch          krn_scr_geometry + 1
+.equ krn_con_getch          __krn_empty_0000 + 1
 .equ krn_con_ignore         krn_con_getch + 1
 .equ krn_con_clear          krn_con_ignore + 1
 .equ krn_con_putch          krn_con_clear + 1

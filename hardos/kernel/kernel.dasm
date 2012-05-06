@@ -1,19 +1,21 @@
 
+.include "../../includes/constants.i"
+
 .org 0x0000
     dat 0
-    
+
 .org 0x0010
     set pc, krn_syscall
-    
+
 .org 0x0012
     set pc, krn_sysvar
-    
+
 .org 0x0014
     set pc, __krn_init
-    
+
 .org 0x0016
     set pc, __krn_drv_init_addr
-    
+
 .org 0x0018
     set pc, __krn_entry
 
@@ -26,7 +28,7 @@
 
 :krn_syscall        add a, SYSCALL_TABLE
                     set pc, [a]
-                    
+
 :krn_sysvar         add a, SYSCALL_TABLE
                     set pc, pop
 
@@ -36,9 +38,9 @@
                     dat krn_set_exit_handler
                     dat krn_set_break_handler
                     dat krn_run
-                    
-                    dat krn_scr_geometry
-                    
+
+                    dat 0
+
                     dat krn_con_getch
                     dat krn_con_ignore
                     dat krn_con_clear
@@ -47,20 +49,20 @@
                     dat krn_con_setcur
                     dat krn_con_getfmt
                     dat krn_con_setfmt
-                    
+
                     dat krn_fs_exists
                     dat krn_fs_get_attrs
                     dat krn_fs_first_file
                     dat krn_fs_next_file
-                    
+
                     dat krn_file_open
                     dat krn_file_close
                     dat krn_file_seek
                     dat krn_file_write
                     dat krn_file_read
-                    
+
                     dat krn_drv_load_path
-                    
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
                     ; __krn_init()
@@ -69,9 +71,8 @@
                     ; function has to do enough that the disk and filesystem
                     ; drivers can be initialised.
                     ;
-                    
-:__krn_init         jsr scr_init
-                    set pc, pop
+
+:__krn_init         set pc, pop
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
@@ -80,11 +81,11 @@
                     ; Initialises the driver loaded starting at addr.  Arguments
                     ; extra0 and extra1 are passed along to the driver.
                     ;
-                    
+
 :__krn_drv_init_addr
                     jsr a
                     set pc, pop
-                    
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
                     ; __krn_entry() -> DNR
@@ -92,7 +93,15 @@
                     ; Starts the kernel and continues initialisation.
                     ; This subroutine does not return.
                     ;
-                    
+                    ; Here's the stack layout we should get:
+                    ;
+                    ; PICK 0:   boot_device_id
+                    ; PICK 1:   scr_id
+                    ; PICK 2:   scr_cur
+                    ; PICK 3:   scr_format
+                    ; PICK 4:   kb_id
+                    ;
+
 :__krn_entry        sub pc, 1
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -100,9 +109,9 @@
                     ; krn_panic() -> DNR
                     ;
                     ; Startles the kernel and causes it to retreat into its
-                    ; burrow.  
+                    ; burrow.
                     ;
-                    
+
 :krn_panic          sub pc, 1
 
 :krn_terminate      set pc, krn_panic
@@ -111,46 +120,46 @@
 
 :krn_set_exit_handler
                     set pc, krn_panic
-                    
+
 :krn_set_break_handler
                     set pc, krn_panic
-                    
+
 :krn_run            set pc, krn_panic
-                    
+
 :krn_con_getch      set pc, krn_panic
-                    
+
 :krn_con_ignore     set pc, krn_panic
-                    
+
 :krn_con_clear      set pc, krn_panic
-                    
+
 :krn_con_putch      set pc, krn_panic
-                    
+
 :krn_con_getcur     set pc, krn_panic
-                    
+
 :krn_con_setcur     set pc, krn_panic
-                    
+
 :krn_con_getfmt     set pc, krn_panic
-                    
+
 :krn_con_setfmt     set pc, krn_panic
-                    
+
 :krn_fs_exists      set pc, krn_panic
 
 :krn_fs_get_attrs   set pc, krn_panic
-                    
+
 :krn_fs_first_file  set pc, krn_panic
-                    
+
 :krn_fs_next_file   set pc, krn_panic
-                    
+
 :krn_file_open      set pc, krn_panic
-                    
+
 :krn_file_close     set pc, krn_panic
-                    
+
 :krn_file_seek      set pc, krn_panic
-                    
+
 :krn_file_read      set pc, krn_panic
-                    
+
 :krn_file_write     set pc, krn_panic
-                    
+
 :krn_drv_load_path  set pc, krn_panic
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -159,6 +168,6 @@
                     ;
                     ; Static data.
                     ;
-                    
+
 :FN_DRIVERS         dat p"DRIVERS\0CONF"
 :FN_SHELL           dat p"SHELL\0\0\0SRO"
