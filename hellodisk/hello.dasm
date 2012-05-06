@@ -1,0 +1,262 @@
+
+.equ SCR_BASE       0x8000
+
+.org 0x7000
+
+:__entry            set [dd_id], pop
+                    set [scr_id], pop
+                    set [scr_cur], pop
+                    set [scr_format], pop
+                    set [kb_id], pop
+                    set sp, 0
+                    
+                    set a, MSG_HELLO
+                    jsr scr_putpsz
+                    
+                    sub pc, 1
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_putpsz(A = string) -> -
+                    ;
+                    ; Writes a packed, zero-terminated string to the screen.
+                    ; This function will interpret newlines and print everything
+                    ; else.
+                    ;
+                    
+:scr_putpsz         ; A = current screen address / offset
+                    ; B = format
+                    ; C = message
+                    ; I = character
+                    set push, i
+                    
+                    set c, a
+                    set a, [scr_cur]
+                    add a, SCR_BASE
+                    
+                    set b, [scr_format]
+                    
+                    ; Put high character
+:.next_word         set i, [c]
+                    shr i, 8
+                    and i, 0x7f
+                    
+                    ife i, 0
+                        set pc, .return
+                    ife i, '\n'
+                        set pc, .nl_h
+                    
+                    bor i, b
+                    set [a], i
+                    
+                    ; Put low character
+:.next_l            jsr .adv
+                    set i, [c]
+                    and i, 0x7f
+                    
+                    ife i, 0
+                        set pc, .return
+                    ife i, '\n'
+                        set pc, .nl_l
+                    
+                    bor i, b
+                    set [a], i
+                    
+:.next_h            jsr .adv
+                    add c, 1
+                    set pc, .next_word
+                    
+                    ; High newline
+:.nl_h              jsr .nl
+                    set pc, .next_l
+                    
+                    ; Low newline
+:.nl_l              jsr .nl
+                    set pc, .next_h
+                    
+                    ; Common newline code for either
+:.nl                sub a, SCR_BASE
+                    jsr scr_nl_from_PrBC
+                    add a, SCR_BASE
+                    
+                    ; Sub one because the very next thing we do is a++.
+                    sub a, 1
+                    set pc, pop
+                    
+                    ; Calls scr_advance_from.  Note that we're calling a
+                    ; variant that explicitly preserves B and C.
+:.adv               sub a, SCR_BASE ; adjust back to raw offset
+                    jsr scr_advance_from_PrBC ; A = new offset
+                    add a, SCR_BASE ; adjust back to address
+                    set pc, pop
+                    
+                    ; Done
+:.return            set [scr_cur], a
+                    set i, pop
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_advance_from(A = current offset) -> A = new offset
+                    ;
+                    ; Advances the given cursor to the next position, scrolling
+                    ; the screen if necessary.  Note that this ignores the
+                    ; current value of scr_cursor.
+                    ;
+                    
+:scr_advance_from_PrBC
+                    add a, 1
+                    
+                    ; If we are now at SCR_BASE + 32*12, we need to scroll the
+                    ; screen up one line and subtract 32 from the cursor.
+                    ifn a, 32*12
+                        set pc, pop
+                    
+                    set push, b
+                    set push, c
+                    jsr scr_scroll_up
+                    set c, pop
+                    set b, pop
+                    sub a, 32
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_nl_from(A = current offset) -> A = new offset
+                    ;
+                    ; Moves the current screen cursor to the next line.
+                    ;
+                    
+:scr_nl_from_PrBC   and a, 0xFFE0
+                    add a, 32
+                    ifl a, 32*12
+                        set pc, pop
+                    
+                    ; Need to scroll up.
+                    set push, b
+                    set push, c
+                    jsr scr_scroll_up
+                    set c, pop
+                    set b, pop
+                    set a, 32*11
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_scroll_up() -> -
+                    ;
+                    ; Scrolls all lines on screen up by one.
+                    ;
+                    
+:scr_scroll_up      ; We can do this by doing a memcpy from 0x8000+32 to
+                    ; 0x8000, length 32*11; then, we memset 0x8000+32*11.
+                    set a, SCR_BASE
+                    set b, SCR_BASE+32
+                    set c, 32*11
+                    jsr memcpy
+                    
+                    set a, SCR_BASE+32*11
+                    set b, 0
+                    set c, 32
+                    jsr memset
+                    
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; memcpy(A = dst, B = src, C = len) -> -
+                    ;
+                    ; Copies len words from src to dst.
+                    ;
+                    
+:memcpy             set push, i
+                    set push, j
+                    set i, a
+                    set j, b
+                    
+                    ; 8 * unrolled copy loop.
+:.next8             ifl c, 8
+                        set pc, .finish
+                        
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sub c, 8
+                    set pc, .next8
+                    
+:.finish            ife c, 0
+                        set pc, .return
+                    sti [i], [j]
+                    sub c, 1
+                    set pc, .finish
+                    
+:.return            set j, pop
+                    set i, pop
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; memset(A = dst, B = value, C = len) -> -
+                    ;
+                    ; Sets len words, starting at dst, to value.
+                    ;
+                    
+:memset             set push, i
+                    set push, j
+                    set i, a
+                    set j, 0 ; doesn't actually matter
+                    
+                    ; 8 * unrolled set loop.
+:.next8             ifl c, 8
+                        set pc, .finish
+                    
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sub c, 8
+                    set pc, .next8
+                    
+:.finish            ife c, 0
+                        set pc, .return
+                    sti [i], b
+                    sub c, 1
+                    set pc, .finish
+                    
+:.return            set j, pop
+                    set i, pop
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Variables.
+
+:dd_id              dat 0xffff
+                    
+:scr_id             dat 0xffff
+:scr_cur            dat 0
+:scr_format         dat 0xF000
+
+:kb_id              dat 0xffff
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data.
+
+:MSG_HELLO          dat p"Hello, World!"
+
+                    ; Sector limit
+.org 0x7200
