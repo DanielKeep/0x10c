@@ -41,6 +41,8 @@
                     jsr kb_init
                     
                     ; Look for a boot device.
+                    set a, MSG_SEARCHING
+                    jsr scr_putpsz
                     jsr dd_try_boot
                     
                     ; If we got here, then we didn't find a boot device.
@@ -81,9 +83,9 @@
                     set b, SCR_BASE
                     hwi c
                     
-                    set a, LEM1802_MEM_MAP_FONT
-                    set b, SCR_FONT
-                    hwi c
+                    ;set a, LEM1802_MEM_MAP_FONT
+                    ;set b, SCR_FONT
+                    ;hwi c
                     
                     ; All done!
                     set pc, pop
@@ -95,8 +97,6 @@
                     ; Writes a packed, zero-terminated string to the screen.
                     ; This function will interpret newlines and print everything
                     ; else.
-                    ;
-                    ; TODO: screen scrolling.
                     ;
                     
 :scr_putpsz         ; A = current screen address / offset
@@ -125,8 +125,8 @@
                     set [a], i
                     
                     ; Put low character
-:.next_l            add a, 1
-                    set i, [c]
+                    jsr .adv
+:.next_l            set i, [c]
                     and i, 0x7f
                     
                     ife i, 0
@@ -137,8 +137,8 @@
                     bor i, b
                     set [a], i
                     
-:.next_h            add a, 1
-                    add c, 1
+                    jsr .adv
+:.next_h            add c, 1
                     set pc, .next_word
                     
                     ; High newline
@@ -150,12 +150,9 @@
                     set pc, .next_h
                     
                     ; Common newline code for either
-:.nl                set push, a
-                    set push, c
-                    jsr scr_nl
-                    set c, pop
-                    set b, [scr_format]
-                    set a, pop
+:.nl                sub a, SCR_BASE
+                    jsr scr_nl_from_PrBC
+                    add a, SCR_BASE
                     set pc, pop
                     
                     ; Calls scr_advance_from.  Note that we're calling a
@@ -166,7 +163,9 @@
                     set pc, pop
                     
                     ; Done
-:.return            set i, pop
+:.return            sub a, SCR_BASE
+                    set [scr_cur], a
+                    set i, pop
                     set pc, pop
                     
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -201,7 +200,7 @@
                     ; Moves the current screen cursor to the next line.
                     ;
                     
-:scr_nl_from_PrBC   and a, 0xFFDF
+:scr_nl_from_PrBC   and a, 0xFFE0
                     add a, 32
                     ifl a, 32*12
                         set pc, pop
@@ -212,7 +211,7 @@
                     jsr scr_scroll_up
                     set c, pop
                     set b, pop
-                    sub a, 32
+                    set a, 32*11
                     set pc, pop
                     
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -332,14 +331,21 @@
                     set j, b
                     set z, c
                     hwn c
-:.next              sub c, 1
+                    set push, c
+                    
+:.next              set c, pop
+                    sub c, 1
                     ife c, 0xffff
                         set pc, .notfound
-                    hwq c
+                    set push, c
+                    hwq c ; * A B C X Y
+                    
                     ifn a, i
                         set pc, .next
                     ifn b, j
                         set pc, .next
+                    
+                    set c, pop
                     
                     ; Got it!
                     ifn z, 0
@@ -365,6 +371,7 @@
                     
 :.return            set j, pop
                     set i, pop
+                    set z, pop
                     set y, pop
                     set x, pop
                     set pc, pop
@@ -377,15 +384,27 @@
                     ; the first sector is already loaded into 0x7000.
                     ;
                     
-:boot_disk          ; First, clear the stack out.
-                    set sp, 0xffff
+:boot_disk          ; Tell the user because we like to brag...
+                    set a, MSG_BOOTING
+                    jsr scr_putpsz
+                    
+                    ; Now, clear the stack out.
+                    set sp, 0
                     
                     ;
                     ; Here is the stack layout bootloaders can expect:
                     ;
                     ; PICK 0:   boot_device_id
+                    ; PICK 1:   scr_id
+                    ; PICK 2:   scr_cur
+                    ; PICK 3:   scr_format
+                    ; PICK 4:   kb_id
                     ;
                     
+                    set push, [kb_id]
+                    set push, [scr_format]
+                    set push, [scr_cur]
+                    set push, [scr_id]
                     set push, a
                     
                     ; Start the bootloader.
@@ -482,11 +501,11 @@
                     ;
                     ; Variables.
                     
-:scr_id             0xffff
-:scr_cur            0
-:scr_format         0xFF00
+:scr_id             dat 0xffff
+:scr_cur            dat 0
+:scr_format         dat 0xF000
 
-:kb_id              0xffff
+:kb_id              dat 0xffff
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -494,4 +513,6 @@
                     ;
                     ; Static data.
 
-:MSG_NO_BOOT_DISK   dat p"No boot disk found.\nInsert boot disk and reboot.\0"
+:MSG_SEARCHING      dat p"Searching for boot disk...\n\0"
+:MSG_BOOTING        dat p"Booting...\n\0"
+:MSG_NO_BOOT_DISK   dat p"No boot disk found.\nInsert boot disk and reboot.\n\0"
