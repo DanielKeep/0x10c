@@ -33,6 +33,24 @@
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
+                    ; scr_putcr(A = ascii_ch) -> -
+                    ;
+                    ; Puts a character to the screen, without interpreting it.
+                    ;
+
+:scr_putcr          set c, a
+                    set a, [scr_cur]
+                    add a, SCR_BASE
+                    and c, 0x7f
+                    bor c, [scr_format]
+                    set [a], c
+                    sub a, SCR_BASE
+                    jsr scr_advance_from_PrBC
+                    set [scr_cur], a
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
                     ; scr_putpsz(A = string) -> -
                     ;
                     ; Writes a packed, zero-terminated string to the screen.

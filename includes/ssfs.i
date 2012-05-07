@@ -6,8 +6,8 @@
 .equ SSFS_HEADER_DIRECTORY  SSFS_HEADER_BASE + 6
 .equ SSFS_LOADER_BEGIN      SSFS_HEADER_BASE + 32
 
-.equ SSFS_MAGIC_L           p"SS"
-.equ SSFS_MAGIC_H           p"FS"
+.equ SSFS_MAGIC_L           p'SS'
+.equ SSFS_MAGIC_H           p'FS'
 .equ SSFS_VERSION_MAJOR     1
 .equ SSFS_VERSION_MINOR     0
 .equ SSFS_VERSION_MIN       ((SSFS_VERSION_MAJOR << 8) | SSFS_VERSION_MINOR) - 1
