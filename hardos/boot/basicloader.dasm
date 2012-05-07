@@ -1,0 +1,77 @@
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Constants.
+                    ;
+
+.include "../../includes/constants.i"
+.include "loader.i"
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Implementation.
+                    ;
+
+.org BOOT_BASE
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; __entry() -> DNR
+                    ;
+                    
+:__entry            ; Grab all the juicy stuff from the stack.
+                    set [dd_id], pick 0
+                    set [scr_id], pick 1
+                    set [scr_cur], pick 2
+                    set [scr_format], pick 3
+                    set [kb_id], pick 4
+                    
+                    set a, MSG_LOADING
+                    jsr scr_putpsz
+                    
+                    ; Tell the filesystem to initialise itself.
+                    jsr ssfs_init
+                    
+                    ; Locate kernel and load into memory.
+                    set a, FN_KERNEL
+                    set b, 0x0000
+                    jsr ssfs_load_file
+                    
+                    ; Stack should be correctly set up for the kernel; just
+                    ; update screen stuff.
+                    set pick 2, [scr_cur]
+                    set pick 3, [scr_format]
+                    
+                    ; Jump into kernel.
+                    set pc, 0x0010
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; halt() -> DNR
+                    ;
+                    
+:halt               sub pc, 1    
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Variables.
+                    ;
+
+:dd_id              dat 0xffff
+:kb_id              dat 0xffff
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data.
+                    ;
+                    
+:MSG_LOADING        dat p"Loading kernel...\n\0"
+:FN_KERNEL          dat p"KERNEL\0\0SYS\0"

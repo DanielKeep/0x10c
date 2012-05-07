@@ -1,0 +1,198 @@
+
+.include "../../includes/constants.i"
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ij_transfer(I = dest, J = src, C = length)
+                    ;
+                    ; Transfers data from src to dest.  Basically memcpy but
+                    ; using different registers.
+                    ;
+
+:ij_transfer        ifl c, 8
+                        set pc, .finish
+
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sub c, 8
+                    set pc, ij_transfer
+
+:.finish            ife c, 0
+                        set pc, pop
+                    sti [i], [j]
+                    sub c, 1
+                    set pc, .finish
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; hw_find(A:B = device id low:high, C = callback)
+                    ;   -> A = index | -1
+                    ;
+                    ; Locates a specified hardware device by id.  If a callback
+                    ; is supplied, then the callback is invoked when a matching
+                    ; device is found, with the device index passed in the A
+                    ; register.
+                    ;
+                    ; The callback should return TRUE to stop the search, FALSE
+                    ; to continue the search.
+                    ;
+
+:hw_find            set push, x
+                    set push, y
+                    set push, z
+                    set push, i
+                    set push, j
+                    set i, a
+                    set j, b
+                    set z, c
+                    hwn c
+                    set push, c
+
+:.next              set c, pop
+                    sub c, 1
+                    ife c, 0xffff
+                        set pc, .notfound
+                    set push, c
+                    hwq c ; * A B C X Y
+
+                    ifn a, i
+                        set pc, .next
+                    ifn b, j
+                        set pc, .next
+
+                    set c, pop
+
+                    ; Got it!
+                    ifn z, 0
+                        set pc, .docallback
+
+                    ; Otherwise, assume done.
+:.done              set a, c
+                    set pc, .return
+
+:.docallback        ; We need to backup c
+                    set push, c
+                    set a, c
+                    jsr z
+                    set c, pop
+                    ife a, TRUE
+                        set pc, .done
+
+                    ; Continue the search
+                    set pc, .next
+
+:.notfound          set a, -1
+                    ; set pc, .return
+
+:.return            set j, pop
+                    set i, pop
+                    set z, pop
+                    set y, pop
+                    set x, pop
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; memcpy(A = dst, B = src, C = len) -> -
+                    ;
+                    ; Copies len words from src to dst.
+                    ;
+
+:memcpy             set push, i
+                    set push, j
+                    set i, a
+                    set j, b
+
+                    ; 8 * unrolled copy loop.
+:.next8             ifl c, 8
+                        set pc, .finish
+
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sti [i], [j]
+                    sub c, 8
+                    set pc, .next8
+
+:.finish            ife c, 0
+                        set pc, .return
+                    sti [i], [j]
+                    sub c, 1
+                    set pc, .finish
+
+:.return            set j, pop
+                    set i, pop
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; memset(A = dst, B = value, C = len) -> -
+                    ;
+                    ; Sets len words, starting at dst, to value.
+                    ;
+
+:memset             set push, i
+                    set push, j
+                    set i, a
+                    set j, 0 ; doesn't actually matter
+
+                    ; 8 * unrolled set loop.
+:.next8             ifl c, 8
+                        set pc, .finish
+
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sti [i], b
+                    sub c, 8
+                    set pc, .next8
+
+:.finish            ife c, 0
+                        set pc, .return
+                    sti [i], b
+                    sub c, 1
+                    set pc, .finish
+
+:.return            set j, pop
+                    set i, pop
+                    set pc, pop
+                    
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; memcmp(A = a, B = b, C = len) -> CMP_*
+                    ;
+                    ; Compares two arrays in memory.
+                    ;
+                    
+:memcmp             ife c, 0
+                        set pc, .eq
+                    ifl [a], [b]
+                        set pc, .lt
+                    ifl [b], [a]
+                        set pc, .gt
+                    add a, 1
+                    add b, 1
+                    set pc, memcmp
+                    
+:.eq                set a, CMP_EQ
+                    set pc, pop
+                    
+:.lt                set a, CMP_LT
+                    set pc, pop
+                    
+:.gt                set a, CMP_GT
+                    set pc, pop

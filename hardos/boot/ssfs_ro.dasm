@@ -1,0 +1,197 @@
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Constants.
+                    ;
+
+.include "../../includes/constants.i"
+.include "../../includes/hmd2043.i"
+.include "../../includes/ssfs.i"
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Implementation.
+                    ;
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ssfs_init() -> -
+                    ;
+
+:ssfs_init          set push, x
+
+                    ; First order of business is to make sure we actually
+                    ; understand the filesystem being used.
+                    ife [SSFS_HEADER_MAGIC+0], SSFS_MAGIC_L
+                    ife [SSFS_HEADER_MAGIC+1], SSFS_MAGIC_H
+                        set pc, .check_ver
+                    set pc, .cannot_read_fs
+
+:.check_ver         set a, [SSFS_HEADER_VERSION]
+                    ifl SSFS_VERSION_MIN, a
+                    ifl a, SSFS_VERSION_MAX
+                        set pc, .read_dir
+                    set pc, .cannot_read_fs
+
+:.read_dir          ; Ok, good; we can read the first sector of the central
+                    ; directory.  We're lazy like that.
+                    set a, HMD2043_READ_SECTORS
+                    set b, [SSFS_HEADER_DIRECTORY]
+                    set c, 1
+                    set x, 0x
+                    hwi [dd_id]
+                    ifn a, HMD2043_ERROR_NONE
+                        set pc, .cannot_read_fs
+
+                    ; Now that we've got that, we're done.
+                    set x, pop
+                    set pc, pop
+
+:.cannot_read_fs    set a, ERR_FS_FAIL
+                    jsr scr_putpsz
+                    set pc, halt
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ssfs_load_file(A = filename, B = address)
+                    ;   -> A = success?, B = words_read
+                    ;
+                    ; Stack:
+                    ;   pick 0 = word *filename
+                    ;   pick 1 = word *dest
+                    ;   pick 2 = word *entry
+                    ;   pick 3 = word *cur_sector
+                    ;   pick 4 = word words_left
+                    ;   pick 5 = word words_read
+                    ;
+
+:ssfs_load_file     ; First, find the file.
+                    set push, x
+                    sub sp, 6
+
+                    set pick 0, a
+                    set pick 1, b
+
+                    jsr ssfs_find_file
+                    ife a, NULL
+                        set pc, .not_found
+
+                    ; Found it.  Grab the header data.
+                    set pick 2, a
+                    add a, SSFS_ENTRY_FIRST
+                    set pick 3, [a]
+                    add a, 1
+                    set pick 4, [a]
+                    set pick 5, [a]
+
+                    ; Time to start reading.
+:.next_sector       ife pick 4, 0
+                        set pc, .done
+
+                    ife pick 3, 0
+                        ; Wait... there's still words to read, but we're out of
+                        ; sectors... uh oh.
+                        set pc, .file_truncated
+
+                    ; Read the current sector
+                    set a, HMD2043_READ_SECTORS
+                    set b, pick 3
+                    set c, 1
+                    set x, ssfs_buffer
+                    hwi [dd_id]
+                    ifn a, HMD2043_ERROR_NONE
+                        set pc, .read_failed
+
+                    ; Update next sector pointer
+                    set pick 3, [ssfs_buffer]
+
+                    ; memcpy(dest, ssfs_buffer+1, 511)
+                    ; We'll also update words_left and dest while we're at it.
+                    set a, pick 1
+                    set b, (ssfs_buffer+1)
+                    set c, 511
+                    ifl pick 4, c
+                        set c, pick 4
+
+                    add pick 1, c
+                    sub pick 4, c
+                    jsr memcpy
+
+                    set pc, .next_sector
+
+:.done              set a, TRUE
+                    set b, pick 5
+                    set pc, .return
+
+:.not_found
+:.file_truncated
+:.read_failed       set a, FALSE
+                    set b, 0
+                    set pc, .return
+                    
+:.return            add sp, 6
+                    set x, pop
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ssfs_find_file(A = filename) -> A = *entry | NULL
+                    ;
+
+:ssfs_find_file     set push, a
+                    set b, (ssfs_dir - SSFS_ENTRY_PER_SECTOR)
+
+:.next_file         add b, SSFS_ENTRY_SIZE
+                    ife b, (ssfs_dir + 0x200)
+                        set pc, .not_found
+
+                    ; Check for empty or end-of-directory entries.
+                    set c, [b]
+                    ife c, SSFS_ENTRY_NO_MORE
+                        set pc, .not_found
+                    ife c, SSFS_ENTRY_EMPTY
+                        set pc, .next_file
+
+                    ; Do a full filename comparison.
+                    set a, pick 0
+                    set c, SSFS_ENTRY_NAME_LEN
+                    set push, b
+                    jsr memcmp
+                    set b, pop
+
+                    ifn a, CMP_EQ
+                        set pc, .next_file
+
+                    ; Found it!
+                    set a, b
+                    set pc, .return
+
+:.not_found         set a, NULL
+                    ; set pc, .return
+
+:.return            add sp, 1
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Variables.
+                    ;
+
+.equ ssfs_dir       0x8000 - 0x200
+.equ ssfs_buffer    ssfs_dir - 0x200
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data.
+                    ;
+
+                    ;     12345678901234567890123456789012
+:ERR_FS_FAIL        dat p"Cannot read filesystem; disk maybe corrupt.\n\0"
