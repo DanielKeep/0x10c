@@ -1,8 +1,8 @@
 @ECHO OFF
 
 SET SSFS=..\tools\ssfs
-SET KASM=..\tools\kasm --little-8-bit
-SET KDIS=..\tools\kdis --little-8-bit
+SET KASM=..\tools\kasm
+SET KDIS=..\tools\kdis
 SET OUT=bin
 SET RELOC=--relocatable
 
