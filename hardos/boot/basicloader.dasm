@@ -22,40 +22,47 @@
                     ;
                     ; __entry() -> DNR
                     ;
-                    
+
 :__entry            ; Grab all the juicy stuff from the stack.
                     set [dd_id], pick 0
                     set [scr_id], pick 1
                     set [scr_cur], pick 2
                     set [scr_format], pick 3
                     set [kb_id], pick 4
-                    
+
                     set a, MSG_LOADING
                     jsr scr_putpsz
-                    
+
                     ; Tell the filesystem to initialise itself.
                     jsr ssfs_init
-                    
+
                     ; Locate kernel and load into memory.
                     set a, FN_KERNEL
                     set b, 0x0000
                     jsr ssfs_load_file
-                    
+                    ifn a, TRUE
+                        set pc, .cnr_kernel
+
                     ; Stack should be correctly set up for the kernel; just
                     ; update screen stuff.
                     set pick 2, [scr_cur]
                     set pick 3, [scr_format]
-                    
+
                     ; Jump into kernel.
                     set pc, 0x0010
-                    
+
+                    ; Damnit...
+:.cnr_kernel        set a, ERR_CNR_KERNEL
+                    jsr scr_putpsz
+                    jsr halt
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
                     ; halt() -> DNR
                     ;
-                    
-:halt               sub pc, 1    
-                    
+
+:halt               sub pc, 1
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -65,13 +72,15 @@
 
 :dd_id              dat 0xffff
 :kb_id              dat 0xffff
-                    
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
                     ; Static data.
                     ;
-                    
+
+                    ;     12345678901234567890123456789012
 :MSG_LOADING        dat p"Loading kernel...\n\0"
 :FN_KERNEL          dat p"KERNEL\0\0SYS\0"
+:ERR_CNR_KERNEL     dat p"Could not read KERNEL.SYS.\nHalting.\n\0"
