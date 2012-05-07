@@ -1,6 +1,4 @@
 
-.include "syscall.i"
-
                     ; Since it's kind of hard to let the user know if
                     ; something's gone wrong without a screen, we'll provide
                     ; default screen routines.
@@ -68,7 +66,7 @@
                     set [a], i
 
                     ; Put low character
-:.next_l            add a, 1
+:.next_l            jsr .adv
                     set i, [c]
                     and i, 0x7f
 
@@ -80,7 +78,7 @@
                     bor i, b
                     set [a], i
 
-:.next_h            add a, 1
+:.next_h            jsr .adv
                     add c, 1
                     set pc, .next_word
 
@@ -93,12 +91,12 @@
                     set pc, .next_h
 
                     ; Common newline code for either
-:.nl                set push, a
-                    set push, c
-                    jsr scr_nl
-                    set c, pop
-                    set b, [scr_format]
-                    set a, pop
+:.nl                sub a, SCR_BASE
+                    jsr scr_nl_from_PrBC
+                    add a, SCR_BASE
+
+                    ; Sub one because the very next thing we do is a++.
+                    sub a, 1
                     set pc, pop
 
                     ; Calls scr_advance_from.  Note that we're calling a
@@ -109,7 +107,8 @@
                     set pc, pop
 
                     ; Done
-:.return            set i, pop
+:.return            set [scr_cur], a
+                    set i, pop
                     set pc, pop
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -144,7 +143,7 @@
                     ; Moves the current screen cursor to the next line.
                     ;
 
-:scr_nl_from_PrBC   and a, 0xFFDF
+:scr_nl_from_PrBC   and a, 0xFFE0
                     add a, 32
                     ifl a, 32*12
                         set pc, pop
@@ -155,7 +154,7 @@
                     jsr scr_scroll_up
                     set c, pop
                     set b, pop
-                    sub a, 32
+                    set a, 32*11
                     set pc, pop
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

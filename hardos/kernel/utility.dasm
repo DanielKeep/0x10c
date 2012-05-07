@@ -5,7 +5,8 @@
                     ;
                     ; ij_transfer(I = dest, J = src, C = length)
                     ;
-                    ; Transfers data from src to dest.
+                    ; Transfers data from src to dest.  Basically memcpy but
+                    ; using different registers.
                     ;
 
 :ij_transfer        ifl c, 8
@@ -51,14 +52,21 @@
                     set j, b
                     set z, c
                     hwn c
-:.next              sub c, 1
+                    set push, c
+
+:.next              set c, pop
+                    sub c, 1
                     ife c, 0xffff
                         set pc, .notfound
-                    hwq c
+                    set push, c
+                    hwq c ; * A B C X Y
+
                     ifn a, i
                         set pc, .next
                     ifn b, j
                         set pc, .next
+
+                    set c, pop
 
                     ; Got it!
                     ifn z, 0
@@ -84,6 +92,7 @@
 
 :.return            set j, pop
                     set i, pop
+                    set z, pop
                     set y, pop
                     set x, pop
                     set pc, pop

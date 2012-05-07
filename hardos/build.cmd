@@ -1,4 +1,6 @@
 @ECHO OFF
+SETLOCAL ENABLEEXTENSIONS
+SETLOCAL ENABLEDELAYEDEXPANSION
 
 SET SSFS=..\tools\ssfs
 SET KASM=..\tools\kasm
@@ -15,7 +17,7 @@ FOR %%F IN (kernel\*.dasm) DO (
     IF "%%~nF"=="kernel" (
         REM Do nothing.
     ) ELSE (
-        SET INFILES=%INFILES% %%F
+        SET INFILES=!INFILES! %%F
     )
 )
 

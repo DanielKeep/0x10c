@@ -1,7 +1,8 @@
 
+.equ BOOT_BASE      0x7020
 .equ BOOT_HIGH      0x7200
 
-.equ BOOT_DD_ORG    0x7020
+.equ BOOT_DD_ORG    BOOT_BASE
 .equ BOOT_DD_END    0x70ff
 .equ BOOT_ORG       0x7100
 .equ BOOT_CUTOFF    0x7200 ; 0x7180
