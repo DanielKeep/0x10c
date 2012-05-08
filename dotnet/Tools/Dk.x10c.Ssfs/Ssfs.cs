@@ -241,8 +241,8 @@ namespace Dk.x10c.Ssfs
             }
         }
 
-        private const ushort BootJump0 = 0xff82;
-        private const ushort BootJump1 = 0x0000;
+        private const ushort BootJump0 = 0x7f81;
+        private const ushort BootJump1 = 0x7020;
 
         private const int HeaderSize = 32;
         private const int MaxDirEnts = 512;
