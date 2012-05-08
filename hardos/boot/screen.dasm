@@ -84,8 +84,8 @@
                     set [a], i
 
                     ; Put low character
-:.next_l            jsr .adv
-                    set i, [c]
+                    jsr .adv
+:.next_l            set i, [c]
                     and i, 0x7f
 
                     ife i, 0
@@ -96,8 +96,8 @@
                     bor i, b
                     set [a], i
 
-:.next_h            jsr .adv
-                    add c, 1
+                    jsr .adv
+:.next_h            add c, 1
                     set pc, .next_word
 
                     ; High newline
@@ -112,9 +112,6 @@
 :.nl                sub a, SCR_BASE
                     jsr scr_nl_from_PrBC
                     add a, SCR_BASE
-
-                    ; Sub one because the very next thing we do is a++.
-                    sub a, 1
                     set pc, pop
 
                     ; Calls scr_advance_from.  Note that we're calling a
@@ -125,7 +122,8 @@
                     set pc, pop
 
                     ; Done
-:.return            set [scr_cur], a
+:.return            sub a, SCR_BASE
+                    set [scr_cur], a
                     set i, pop
                     set pc, pop
 

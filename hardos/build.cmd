@@ -4,6 +4,7 @@ SETLOCAL ENABLEDELAYEDEXPANSION
 
 SET SSFS=..\tools\ssfs
 SET KASM=..\tools\kasm
+SET KDIS=..\tools\kdis
 SET OUT=bin\root
 SET RELOC=--relocatable
 SET DISK=bin\hardos01.disk
@@ -23,6 +24,8 @@ FOR %%F IN (kernel\*.dasm) DO (
 
 %KASM% %INFILES% -o %OUT%\kernel.sys
 IF ERRORLEVEL 1 GOTO STOP
+
+%KDIS% %OUT%\kernel.sys -o %OUT%\..\lst\kernel.lst
 
 REM Compile drivers.
 FOR %%F IN (drivers\*.dasm) DO (

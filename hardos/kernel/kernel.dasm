@@ -6,6 +6,14 @@
                     ; Constants.
                     ;
 
+.equ SCR_FONT_BASE  0x8180
+.equ GLYPH_00L      0x417f
+.equ GLYPH_00H      0x7f0c
+.equ GLYPH_01L      0x0c7f
+.equ GLYPH_01H      0x7f41
+
+.include "../../includes/lem1802.i"
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -35,6 +43,29 @@
                     set [scr_format], 0xa000
                     jsr scr_putpsz
 
+                    set a, LEM1802_MEM_DUMP_FONT
+                    set b, SCR_FONT_BASE
+                    hwi [scr_id]
+
+                    set [SCR_FONT_BASE+0], GLYPH_00L
+                    set [SCR_FONT_BASE+1], GLYPH_00H
+                    set [SCR_FONT_BASE+2], GLYPH_01L
+                    set [SCR_FONT_BASE+3], GLYPH_01H
+
+                    set a, LEM1802_MEM_MAP_FONT
+                    set b, SCR_FONT_BASE
+                    hwi [scr_id]
+
+                    set [scr_format], 0xc000
+                    set a, MSG_MOTTO_1
+                    jsr scr_putpsz
+                    set a, 0
+                    jsr scr_putcr
+                    set a, 1
+                    jsr scr_putcr
+                    set a, MSG_MOTTO_2
+                    jsr scr_putpsz
+
                     sub pc, 1
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -54,4 +85,8 @@
                     ; Static data.
                     ;
 
+                    ;     12345678901234567890123456789012
 :MSG_HELLO          dat p"Hello, World!\n\0"
+
+:MSG_MOTTO_1        dat p"If it ain't a \0"
+:MSG_MOTTO_2        dat p"it, it's a...\n\0"

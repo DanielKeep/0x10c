@@ -33,6 +33,24 @@
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
+                    ; scr_putcr(A = ascii_ch) -> -
+                    ;
+                    ; Puts a character to the screen, without interpreting it.
+                    ;
+
+:scr_putcr          set c, a
+                    set a, [scr_cur]
+                    add a, SCR_BASE
+                    and c, 0x7f
+                    bor c, [scr_format]
+                    set [a], c
+                    sub a, SCR_BASE
+                    jsr scr_advance_from_PrBC
+                    set [scr_cur], a
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
                     ; scr_putpsz(A = string) -> -
                     ;
                     ; Writes a packed, zero-terminated string to the screen.
@@ -66,8 +84,8 @@
                     set [a], i
 
                     ; Put low character
-:.next_l            jsr .adv
-                    set i, [c]
+                    jsr .adv
+:.next_l            set i, [c]
                     and i, 0x7f
 
                     ife i, 0
@@ -78,8 +96,8 @@
                     bor i, b
                     set [a], i
 
-:.next_h            jsr .adv
-                    add c, 1
+                    jsr .adv
+:.next_h            add c, 1
                     set pc, .next_word
 
                     ; High newline
@@ -94,9 +112,6 @@
 :.nl                sub a, SCR_BASE
                     jsr scr_nl_from_PrBC
                     add a, SCR_BASE
-
-                    ; Sub one because the very next thing we do is a++.
-                    sub a, 1
                     set pc, pop
 
                     ; Calls scr_advance_from.  Note that we're calling a
@@ -107,7 +122,8 @@
                     set pc, pop
 
                     ; Done
-:.return            set [scr_cur], a
+:.return            sub a, SCR_BASE
+                    set [scr_cur], a
                     set i, pop
                     set pc, pop
 

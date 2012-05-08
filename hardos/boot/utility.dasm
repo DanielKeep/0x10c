@@ -170,14 +170,14 @@
 :.return            set j, pop
                     set i, pop
                     set pc, pop
-                    
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
                     ; memcmp(A = a, B = b, C = len) -> CMP_*
                     ;
                     ; Compares two arrays in memory.
                     ;
-                    
+
 :memcmp             ife c, 0
                         set pc, .eq
                     ifl [a], [b]
@@ -186,13 +186,14 @@
                         set pc, .gt
                     add a, 1
                     add b, 1
+                    sub c, 1
                     set pc, memcmp
-                    
+
 :.eq                set a, CMP_EQ
                     set pc, pop
-                    
+
 :.lt                set a, CMP_LT
                     set pc, pop
-                    
+
 :.gt                set a, CMP_GT
                     set pc, pop

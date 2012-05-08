@@ -153,7 +153,7 @@
                     ;
 
 :ssfs_find_file     set push, a
-                    set b, (ssfs_dir - SSFS_ENTRY_PER_SECTOR)
+                    set b, (ssfs_dir - SSFS_ENTRY_SIZE)
 
 :.next_file         add b, SSFS_ENTRY_SIZE
                     ife b, (ssfs_dir + 0x200)

@@ -7,6 +7,7 @@
                     ;
 
 .include "../../includes/constants.i"
+.include "../../includes/hmd2043.i"
 .include "loader.i"
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -30,6 +31,14 @@
                     set [scr_format], pick 3
                     set [kb_id], pick 4
 
+                    ; Read the next sector into memory, too.
+                    set a, HMD2043_READ_SECTORS
+                    set b, 1
+                    set c, 1
+                    set x, 0x7200
+                    hwi [dd_id]
+
+                    ; Put up a loading message.
                     set a, MSG_LOADING
                     jsr scr_putpsz
 
