@@ -28,8 +28,6 @@
 .include "../includes/keyboard.i"
 .include "../includes/hmd2043.i"
 
-.org 0x0000
-
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
                     ; __entry() -> DNR
