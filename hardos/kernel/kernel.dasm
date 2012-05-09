@@ -22,7 +22,7 @@
                     ;
 
 .org 0x0000
-                    dat 0
+                    set pc, __entry
 
 .org 0x0010
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -32,7 +32,10 @@
                     ; Entry point into the OS.
                     ;
 
-:__entry            set [dd_id], pop
+:__entry            ; Zero out 0 so jumps to it fail.
+                    set [0], 0
+
+                    set [dd_id], pop
                     set a, pop
                     set b, pop
                     set c, pop

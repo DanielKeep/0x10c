@@ -57,7 +57,7 @@
                     set pick 3, [scr_format]
 
                     ; Jump into kernel.
-                    set pc, 0x0010
+                    set pc, 0x0000
 
                     ; Damnit...
 :.cnr_kernel        set a, ERR_CNR_KERNEL
