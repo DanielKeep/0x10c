@@ -6,10 +6,10 @@ SET KDIS=..\tools\kdis
 SET OUT=bin
 SET RELOC=--relocatable
 
-%KASM% bootrom.dasm -o %OUT%\boot.rom
+%KASM% bootrom.dasm -o %OUT%\boot.bin
 IF ERRORLEVEL 1 GOTO STOP
 
-%KDIS% %OUT%\boot.rom -o %OUT%\boot.lst
+%KDIS% %OUT%\boot.bin -o %OUT%\boot.lst
 
 GOTO EOF
 
