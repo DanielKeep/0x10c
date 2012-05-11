@@ -1,0 +1,71 @@
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Constants.
+                    ;
+
+.include "../kernel/syscall.i"
+
+.equ GLYPH_00L      0x417f
+.equ GLYPH_00H      0x7f0c
+.equ GLYPH_01L      0x0c7f
+.equ GLYPH_01H      0x7f41
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Code.
+                    ;
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; __entry() -> DNR
+                    ;
+                    ; Entry point into the program.
+                    ;
+
+:__entry            set a, 0xa000
+                    syscall(scr_set_format)
+
+                    set a, MSG_HELLO
+                    syscall(scr_putpsz)
+
+                    set a, 0
+                    set b, GLYPH_00L
+                    set c, GLYPH_00H
+                    syscall(scr_font_set_glyph)
+
+                    set a, 1
+                    set b, GLYPH_01L
+                    set c, GLYPH_01H
+                    syscall(scr_font_set_glyph)
+
+                    set a, 0xc000
+                    syscall(scr_set_format)
+
+                    set a, MSG_MOTTO_1
+                    syscall(scr_putpsz)
+                    set a, 0
+                    syscall(scr_putcr)
+                    set a, 1
+                    syscall(scr_putcr)
+                    set a, MSG_MOTTO_2
+                    syscall(scr_putpsz)
+
+                    sub pc, 1
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data.
+                    ;
+
+                    ;     12345678901234567890123456789012
+:MSG_HELLO          dat p"Hello, World!\n\0"
+
+:MSG_MOTTO_1        dat p"If it ain't a \0"
+:MSG_MOTTO_2        dat p"it, it's a...\n\0"
