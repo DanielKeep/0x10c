@@ -1,0 +1,119 @@
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Constants.
+                    ;
+
+.include "../../includes/constants.i"
+
+.equ MEM_HIGH_BASE_INIT  0xe000
+
+.equ MEM_LOW_LIMIT  0x4000
+.equ MEM_HIGH_LIMIT 0x8000
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Code.
+                    ;
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; mem_init(A = low_base) -> -
+                    ;
+                    ; Initialises the memory subsystem.  The low_base argument
+                    ; should contain a pointer to the lowest address at which
+                    ; nothing is being stored.
+                    ;
+
+:mem_init           set [mem_low_base], a
+                    set [mem_high_base], MEM_HIGH_BASE_INIT
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; mem_low_alloc(A = words) -> ptr | panic
+                    ;
+                    ; Will try to allocate the requested number of words from
+                    ; low memory.  If there is not enough space left, it will
+                    ; panic the kernel.
+                    ;
+                    ; Note that low memory is not reclaimable.
+                    ;
+
+:mem_low_alloc      set b, [mem_low_base]
+                    add b, a
+                    ifl b, MEM_LOW_LIMIT
+                        set pc, .under_limit
+
+                    set a, PANIC_NO_LOW_MEM
+                    set pc, sys_panic_because
+
+:.under_limit       set a, [mem_low_base]
+                    set [mem_low_base], b
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; mem_high_alloc(A = words) -> ptr | panic
+                    ;
+                    ; Will try to allocate the requested number of words from
+                    ; high memory.  If there is not enough space left, it will
+                    ; panic the kernel.
+                    ;
+                    ; Note that high memory is not reclaimable.
+                    ;
+
+:mem_high_alloc     set b, [mem_high_base]
+                    sub b, a
+                    ifl b, MEM_HIGH_LIMIT
+                        set pc, .over_limit
+
+                    set a, b
+                    set [mem_high_base], a
+                    set pc, pop
+
+:.over_limit        set a, PANIC_NO_HIGH_MEM
+                    set pc, sys_panic_because
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; mem_low_free() -> words
+                    ;
+                    ; Computes the number of free words of low memory.
+                    ;
+
+:mem_low_free       set a, MEM_LOW_LIMIT
+                    sub a, [mem_low_base]
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; mem_high_free() -> words
+                    ;
+                    ; Computes the number of free words of high memory.
+                    ;
+
+:mem_high_free      set a, [mem_high_base]
+                    sub a, MEM_HIGH_LIMIT
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Variables.
+                    ;
+
+:mem_low_base       dat MEM_LOW_LIMIT
+:mem_high_base      dat MEM_HIGH_LIMIT
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data.
+                    ;

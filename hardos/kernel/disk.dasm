@@ -1,0 +1,145 @@
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Constants.
+                    ;
+
+.include "../../includes/constants.i"
+.include "../../includes/hmd2043.i"
+
+.equ DiskCommand.type               0x00
+.equ DiskCommand.complete           0x01
+.equ DiskCommand.initial_sector     0x02
+.equ DiskCommand.sector_count       0x03
+.equ DiskCommand.buffer             0x04
+.equ DiskCommand.sizeof             0x05
+
+.equ DiskDrive.hardware_id          0x00
+.equ DiskDrive.active               0x01
+.equ DiskDrive.words_per_sector     0x02
+.equ DiskDrive.sectors              0x03
+.equ DiskDrive.current_sector       0x04
+.equ DiskDrive.buffer               0x05
+.equ DiskDrive.pending              0x06
+;.equ DiskDrive.command_queue        0x07
+.equ DiskDrive.sizeof               0x08
+
+.equ DISK_DRIVE_BUFFER_SIZE         512
+.equ DISK_DRIVE_BUFFER_UNUSED       0xffff
+;.equ DISK_DRIVE_QUEUE_LENGTH        4
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Code.
+                    ;
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; disk_init(A = boot_device_id) -> -
+                    ;
+
+:disk_init          set [.boot_device_id], a
+
+                    ; First, we need to know how many disk drives there are.
+                    set [.device_count], 0
+                    set a, HMD2043_ID_L
+                    set b, HMD2043_ID_H
+                    set c, .count_device
+                    jsr hw_find
+
+                    set [disk_num_drives], [.device_count]
+
+                    ; Now, we can allocate the DiskDrive array.
+                    set a, [.device_count]
+                    mul a, DiskDrive.sizeof
+                    jsr mem_low_high_alloc
+                    set [disk_drives], a
+
+                    ; We will fill in the entry for the boot drive first.
+                    set [.next_entry], 0
+                    set a, [.boot_device_id]
+                    jsr .build_entry
+
+                    ; And now, we can take care of the rest.
+                    set a, HMD2043_ID_L
+                    set b, HMD2043_ID_H
+                    set c, .build_entry_callback
+                    jsr hw_find
+
+                    ; All done.
+                    set pc, pop
+
+:.boot_device_id    dat 0
+:.device_count      dat 0
+:.next_entry        dat 0
+
+:.count_device      add [.device_count], 1
+                    set pc, pop
+
+:.build_entry_callback
+                    ife a, [.boot_device_id]
+                        set pc, pop
+                    set pc, .build_entry
+
+:.build_entry       set push, a
+                    set push, z
+                    set z, [.next_entry]
+
+                    set [z+DiskDrive.hardware_id], a
+
+                    set a, HMD2043_QUERY_MEDIA_PRESENT
+                    hwi peek
+                    ifn a, HMD2043_ERROR_NONE
+                        set pc, .drive_error
+                    set [z+DiskDrive.active], b
+
+                    ife b, FALSE
+                        set pc, .no_disk
+
+                    set a, HMD2043_QUERY_MEDIA_PARAMETERS
+                    hwi peek
+                    ifn a, HMD2043_ERROR_NONE
+                        set pc, .drive_error
+                    set [z+DiskDrive.words_per_sector], b
+                    set [z+DiskDrive.sectors], c
+                    xor x, 1
+                    set [z+DiskDrive.writable], x
+
+                    set pc, .fill_current_sector
+
+:.no_disk           set [z+DiskDrive.words_per_sector], 0xffff
+                    set [z+DiskDrive.sectors], 0xffff
+                    set [z+DiskDrive.writable], 0
+
+:.fill_current_sector
+                    set [z+DiskDrive.current_sector], DISK_DRIVE_BUFFER_UNUSED
+
+                    set a, DISK_DRIVE_BUFFER_SIZE
+                    jsr mem_high_alloc
+                    set [z+DiskDrive.buffer], a
+
+                    set [z+DiskDrive.pending], FALSE
+
+                    add [.next_entry], 1
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Variables.
+                    ;
+
+:disk_drives        dat 0
+:disk_num_drives    dat 0
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data.
+                    ;
