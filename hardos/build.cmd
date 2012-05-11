@@ -27,12 +27,6 @@ IF ERRORLEVEL 1 GOTO STOP
 
 %KDIS% %OUT%\kernel.sys -o %OUT%\..\lst\kernel.lst
 
-REM Compile drivers.
-FOR %%F IN (drivers\*.dasm) DO (
-    %KASM% %%F %RELOC% -o %OUT%\%%~nF.drv
-    IF ERRORLEVEL 1 GOTO STOP
-)
-
 REM Compile programs.
 FOR %%F IN (programs\*.dasm) DO (
     %KASM% %%F %RELOC% -o %OUT%\%%~nF.sro
