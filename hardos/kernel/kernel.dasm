@@ -33,45 +33,23 @@
                     ;
                     ; 1.    Prepare the registers and stack as you would if
                     ;       directly calling the syscall function.
-                    ; 2.    Push the A register to the stack, even if it is not
-                    ;       being used for an argument.
-                    ; 3.    Store the syscall number into the A register.
-                    ; 4.    jsr do_syscall.
+                    ; 2.    Store the syscall number into the Z register.
+                    ; 3.    jsr do_syscall.
                     ;
 
 .org 0x0010
 :do_syscall         ; Make sure the syscall is valid.
-                    ifg a, [syscall_table_max]
+                    ifg z, [syscall_table_max]
                         set pc, .bad_syscall
 
                     ; Turn A into the syscall address.
-                    add a, syscall_table
-                    set a, [a]
-
-                    ; We now need to juggle the stack and A register so that we
-                    ; go from this:
-                    ;
-                    ;  A = syscall, St = return_pc, a_value
-                    ;
-                    ; to this:
-                    ;
-                    ;  A = a_value, St = syscall, return_pc
-
-                    set push, a
-                    set a, pick 2
-                    set pick 2, pick 1
-                    set peek, pop
+                    add z, syscall_table
+                    set z, [z]
 
                     ; Finally, we can call the syscall itself.
-                    set pc, pop
+                    set pc, z
 
-:.bad_syscall       ; Before calling panic, rotate the arguments.  Note that
-                    ; we'll *leave* the syscall on the stack.
-                    set push, a
-                    set a, pick 2
-                    set pick 2, pick 1
-                    set peek, pop
-                    set pc, sys_panic
+:.bad_syscall       set pc, sys_panic
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;

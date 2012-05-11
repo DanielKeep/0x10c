@@ -21,7 +21,13 @@
 .equ ring_pop_addr          17
 
 .macro syscall(id)
-    set push, a
-    set a, id
+    set push, z
+    set z, id
+    jsr do_syscall
+    set z, pop
+.end
+
+.macro syscall_ScZ(id)
+    set z, id
     jsr do_syscall
 .end
