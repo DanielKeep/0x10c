@@ -1,0 +1,249 @@
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Constants.
+                    ;
+
+.include "../../includes/constants.i"
+
+.equ RING.SIZEOF    6
+.equ RING.CAPACITY  0x00
+.equ RING.USED      0x01
+.equ RING.FIRST     0x02
+.equ RING.NEXT      0x03
+.equ RING.ELEMENT_SIZE  0x04
+.equ RING.MASK      0x05
+.equ RING.ELEMENTS  0x06
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Code.
+                    ;
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_sizeof(A = capacity, B = element size)
+                    ;   -> A = words required
+                    ;
+                    ; Computes the size of a ring buffer with the requested
+                    ; parameters.
+                    ;
+
+:ring_sizeof        mul a, b
+                    add a, RING.SIZEOF
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_init(A = address, B = capacity, C = element size)
+                    ;   -> -
+                    ;
+                    ; Initialises a pre-allocated ring buffer.  Note that
+                    ; capacity *must* be a power of two.
+                    ;
+
+:ring_init          set [a+RING.CAPACITY], b
+                    set [a+RING.USED], 0
+                    set [a+RING.FIRST], 0
+                    set [a+RING.NEXT], 0
+                    set [a+RING.ELEMENT_SIZE], c
+                    sub b, 1
+                    set [a+RING.MASK], b
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_get_capacity(A = ring) -> A = capacity
+                    ;
+
+:ring_get_capacity  set a, [a+RING.CAPACITY]
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_get_length(A = ring) -> A = length
+                    ;
+
+:ring_get_length    set a, [a+RING.USED]
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_get_free(A = ring) -> A = free
+                    ;
+
+:ring_get_free      set b, [a+RING.CAPACITY]
+                    sub b, [a+RING.USED]
+                    set a, b
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_add(A = ring, B = value) -> success
+                    ;
+
+:ring_add           ife [a+RING.USED], [a+RING.CAPACITY]
+                        set pc, .buffer_full
+
+                    set c, [a+RING.NEXT]
+                    ;mul c, [a+RING.ELEMENT_SIZE]
+                    add c, RING.ELEMENTS
+                    add c, a
+                    set [c], b
+
+                    add [a+RING.NEXT], 1
+                    and [a+RING.NEXT], [a+RING.MASK]
+                    add [a+RING.USED], 1
+
+                    set a, TRUE
+                    set pc, pop
+
+:.buffer_full       set a, FALSE
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_add_addr(A = ring) -> ptr | NULL
+                    ;
+                    ; Adds a new element to the ring buffer and returns its
+                    ; address or NULL if the ring buffer is full.
+                    ;
+
+:ring_add_addr      ife [a+RING.USED], [a+RING.CAPACITY]
+                        set pc, .buffer_full
+
+                    set c, [a+RING.NEXT]
+                    mul c, [a+RING.ELEMENT_SIZE]
+                    add c, RING.ELEMENTS
+                    add c, a
+
+                    add [a+RING.NEXT], 1
+                    and [a+RING.NEXT], [a+RING.MASK]
+                    add [a+RING.USED], 1
+
+                    set a, c
+                    set pc, pop
+
+:.buffer_full       set a, NULL
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_peek(A = *out, B = ring) -> success
+                    ;
+
+:ring_peek          ife [b+RING.USED], 0
+                        set pc, .buffer_empty
+
+                    set c, [b+RING.FIRST]
+                    ;mul c, [b+RING.ELEMENT_SIZE]
+                    add c, RING.ELEMENTS
+                    add c, b
+                    set [a], [c]
+
+                    ;add [b+RING.FIRST], 1
+                    ;and [b+RING.NEXT], [b+RING.MASK]
+                    ;sub [b+RING.USED], 1
+
+                    set a, TRUE
+                    set pc, pop
+
+:.buffer_empty      set a, FALSE
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_peek_addr(A = ring) -> ptr | NULL
+                    ;
+                    ; Returns the address of the first element of the ring
+                    ; buffer, or NULL if the ring buffer is empty.
+                    ;
+
+:ring_peek_addr     ife [a+RING.USED], 0
+                        set pc, .buffer_empty
+
+                    set c, [a+RING.FIRST]
+                    mul c, [a+RING.ELEMENT_SIZE]
+                    add c, RING.ELEMENTS
+                    add c, a
+
+                    ;add [a+RING.FIRST], 1
+                    ;and [a+RING.NEXT], [a+RING.MASK]
+                    ;sub [a+RING.USED], 1
+
+                    set a, c
+                    set pc, pop
+
+:.buffer_empty      set a, NULL
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_pop(A = *out, B = ring) -> success
+                    ;
+                    ; Pops a one-word element from the front of the ring buffer.
+                    ;
+
+:ring_pop           ife [b+RING.USED], 0
+                        set pc, .buffer_empty
+
+                    set c, [b+RING.FIRST]
+                    ;mul c, [b+RING.ELEMENT_SIZE]
+                    add c, RING.ELEMENTS
+                    add c, b
+                    set [a], [c]
+
+                    add [b+RING.FIRST], 1
+                    and [b+RING.NEXT], [b+RING.MASK]
+                    sub [b+RING.USED], 1
+
+                    set a, TRUE
+                    set pc, pop
+
+:.buffer_empty      set a, FALSE
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; ring_pop_addr(A = ring) -> success
+                    ;
+                    ; This pops the first element from the ring buffer and
+                    ; returns whether the operation succeeded.
+                    ;
+                    ; Note that this function does *not* return the address
+                    ; of the element popped since it now no longer exists in
+                    ; the ring buffer.  If you want to access the first value
+                    ; in the ring buffer before removing it, use ring_peek_addr.
+                    ;
+
+:ring_pop_addr      ife [a+RING.USED], 0
+                        set pc, .buffer_empty
+
+                    add [a+RING.FIRST], 1
+                    and [a+RING.NEXT], [a+RING.MASK]
+                    sub [a+RING.USED], 1
+
+                    set a, TRUE
+                    set pc, pop
+
+:.buffer_empty      set a, FALSE
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Variables.
+                    ;
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Static data.
+                    ;
+
