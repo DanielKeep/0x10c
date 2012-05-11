@@ -6,13 +6,14 @@
                     ; Constants.
                     ;
 
+.include "../../includes/constants.i"
+.include "../../includes/lem1802.i"
+
 .equ SCR_FONT_BASE  0x8180
 .equ GLYPH_00L      0x417f
 .equ GLYPH_00H      0x7f0c
 .equ GLYPH_01L      0x0c7f
 .equ GLYPH_01H      0x7f41
-
-.include "../../includes/lem1802.i"
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -24,7 +25,54 @@
 .org 0x0000
                     set pc, __entry
 
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; do_syscall
+                    ;
+                    ; Invokes a syscall.  The calling convention is as follows:
+                    ;
+                    ; 1.    Prepare the registers and stack as you would if
+                    ;       directly calling the syscall function.
+                    ; 2.    Push the A register to the stack, even if it is not
+                    ;       being used for an argument.
+                    ; 3.    Store the syscall number into the A register.
+                    ; 4.    jsr do_syscall.
+                    ;
+
 .org 0x0010
+:do_syscall         ; Make sure the syscall is valid.
+                    ifg a, [syscall_table_max]
+                        set pc, .bad_syscall
+
+                    ; Turn A into the syscall address.
+                    add a, syscall_table
+                    set a, [a]
+
+                    ; We now need to juggle the stack and A register so that we
+                    ; go from this:
+                    ;
+                    ;  A = syscall, St = return_pc, a_value
+                    ;
+                    ; to this:
+                    ;
+                    ;  A = a_value, St = syscall, return_pc
+
+                    set push, a
+                    set a, pick 2
+                    set pick 2, pick 1
+                    set peek, pop
+
+                    ; Finally, we can call the syscall itself.
+                    set pc, pop
+
+:.bad_syscall       ; Before calling panic, rotate the arguments.  Note that
+                    ; we'll *leave* the syscall on the stack.
+                    set push, a
+                    set a, pick 2
+                    set pick 2, pick 1
+                    set peek, pop
+                    set pc, sys_panic
+
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
                     ; __entry() -> DNR
@@ -34,7 +82,9 @@
 
 :__entry            ; Zero out 0 so jumps to it fail.
                     set [0], 0
+                    set [1], 0
 
+                    ; Pull out stuff passed from bootloader.
                     set [dd_id], pop
                     set a, pop
                     set b, pop
@@ -42,7 +92,30 @@
                     jsr scr_init
                     set [kb_id], pop
 
-                    set a, MSG_HELLO
+                    ; Compute syscall table size.
+                    set a, syscall_table_end
+                    sub a, syscall_table
+                    set [syscall_table_len], a
+                    sub a, 1
+                    set [syscall_table_max], a
+
+                    ; Print hello, world message.
+                    jsr sys_hello_world
+                    jsr sys_panic
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; sys_panic() -> DNR
+                    ;
+
+:sys_panic          sub pc, 1
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; sys_hello_world() -> DNR
+                    ;
+
+:sys_hello_world    set a, .HELLO
                     set [scr_format], 0xa000
                     jsr scr_putpsz
 
@@ -60,16 +133,38 @@
                     hwi [scr_id]
 
                     set [scr_format], 0xc000
-                    set a, MSG_MOTTO_1
+                    set a, .MOTTO_1
                     jsr scr_putpsz
                     set a, 0
                     jsr scr_putcr
                     set a, 1
                     jsr scr_putcr
-                    set a, MSG_MOTTO_2
+                    set a, .MOTTO_2
                     jsr scr_putpsz
 
                     sub pc, 1
+
+                    ;     12345678901234567890123456789012
+:.HELLO             dat p"Hello, World!\n\0"
+
+:.MOTTO_1           dat p"If it ain't a \0"
+:.MOTTO_2           dat p"it, it's a...\n\0"
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Syscall table.
+                    ;
+
+:syscall_table_max  dat 0
+:syscall_table_len  dat 0
+
+:syscall_table      dat sys_panic
+                    dat scr_putpsz
+                    dat scr_putcr
+
+:syscall_table_end  dat 0
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -87,9 +182,3 @@
                     ;
                     ; Static data.
                     ;
-
-                    ;     12345678901234567890123456789012
-:MSG_HELLO          dat p"Hello, World!\n\0"
-
-:MSG_MOTTO_1        dat p"If it ain't a \0"
-:MSG_MOTTO_2        dat p"it, it's a...\n\0"

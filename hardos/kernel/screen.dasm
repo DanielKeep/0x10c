@@ -1,15 +1,13 @@
 
-                    ; Since it's kind of hard to let the user know if
-                    ; something's gone wrong without a screen, we'll provide
-                    ; default screen routines.
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
-                    ; These are for a "basic" subset of the LEM1802: it assumes
-                    ; the screen is mapped to 0x8000 and is 32x12 with 16-bit
-                    ; cells with a 7-bit ASCII-ish font.
+                    ; Constants.
                     ;
-                    ; The display driver loaded later on can either build on top
-                    ; of these routines (leaving the screen where it is) or
-                    ; replace them entirely.
+
+.include "../../includes/constants.i"
+.include "../../includes/lem1802.i"
 
 .equ SCR_BASE       0x8000
 .equ SCR_FONT       0x8180
@@ -17,6 +15,13 @@
 .equ SCR_HEIGHT     12
 .equ SCR_GEOMETRY   (SCR_WIDTH << 8) | SCR_HEIGHT
 .equ SCR_CELLS      SCR_WIDTH * SCR_HEIGHT
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; Code.
+                    ;
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
@@ -129,13 +134,27 @@
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
+                    ; scr_advance() -> -
+                    ;
+                    ; Advances the given cursor to the next position, scrolling
+                    ; the screen if necessary.
+                    ;
+
+:scr_advance        set a, [scr_cur]
+                    jsr scr_advance_from
+                    set [scr_cur], a
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
                     ; scr_advance_from(A = current offset) -> A = new offset
                     ;
                     ; Advances the given cursor to the next position, scrolling
                     ; the screen if necessary.  Note that this ignores the
-                    ; current value of scr_cursor.
+                    ; current value of scr_cur.
                     ;
 
+:scr_advance_from
 :scr_advance_from_PrBC
                     add a, 1
 
@@ -154,11 +173,26 @@
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
-                    ; scr_nl_from(A = current offset) -> A = new offset
+                    ; scr_nl() -> -
                     ;
-                    ; Moves the current screen cursor to the next line.
+                    ; Moves the current screen cursor to the next line,
+                    ; scrolling the screen if necessary.
                     ;
 
+:scr_nl             set a, [scr_cur]
+                    jsr scr_nl_from
+                    set [scr_cur], a
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_nl_from(A = current offset) -> A = new offset
+                    ;
+                    ; Moves the current screen cursor to the next line.  Note
+                    ; that this ignores the current value of scr_cur.
+                    ;
+
+:scr_nl_from
 :scr_nl_from_PrBC   and a, 0xFFE0
                     add a, 32
                     ifl a, 32*12
@@ -192,6 +226,28 @@
                     set c, 32
                     jsr memset
 
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_set_format(A = format) -> A = old format
+                    ;
+
+:scr_set_format     set push, [scr_format]
+                    set [scr_format], a
+                    set a, pop
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; scr_font_set_glyph(A = glyph, B = low word, C = high word)
+                    ;   -> -
+                    ;
+
+:scr_font_set_glyph add a, SCR_FONT
+                    set [a], b
+                    add a, 1
+                    set [a], c
                     set pc, pop
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
