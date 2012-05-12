@@ -80,21 +80,16 @@
                     ifn b, j
                         set pc, .next
 
-                    set c, pop
-
                     ; Got it!
                     ifn z, 0
                         set pc, .docallback
 
                     ; Otherwise, assume done.
-:.done              set a, c
+:.done              set a, pop
                     set pc, .return
 
-:.docallback        ; We need to backup c
-                    set push, c
-                    set a, c
+:.docallback        set a, c
                     jsr z
-                    set c, pop
                     ife a, TRUE
                         set pc, .done
 

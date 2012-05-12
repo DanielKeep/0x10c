@@ -9,6 +9,8 @@
 .include "../../includes/constants.i"
 .include "../../includes/lem1802.i"
 
+.include "panic.i"
+
 .equ SCR_FONT_BASE  0x8180
 .equ GLYPH_00L      0x417f
 .equ GLYPH_00H      0x7f0c
@@ -63,20 +65,29 @@
                     set [0], 0
                     set [1], 0
 
-                    ; Pull out stuff passed from bootloader.
-                    set [dd_id], pop
-                    set a, pop
-                    set b, pop
-                    set c, pop
-                    jsr scr_init
-                    set [kb_id], pop
-
                     ; Compute syscall table size.
                     set a, syscall_table_end
                     sub a, syscall_table
                     set [syscall_table_len], a
                     sub a, 1
                     set [syscall_table_max], a
+
+                    ; Start initialising stuff.
+                    set a, pick 0
+                    jsr mem_init
+
+                    set a, pick 2
+                    set b, pick 3
+                    set c, pick 4
+                    jsr scr_init
+
+                    set a, pick 1
+                    jsr disk_init
+
+                    set [kb_id], pick 5
+
+                    ; Clear stack.
+                    set sp, 0
 
                     ; Print hello, world message.
                     jsr sys_hello_world

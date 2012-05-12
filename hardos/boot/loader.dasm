@@ -45,16 +45,19 @@
                     jsr ssfs_init
 
                     ; Locate kernel and load into memory.
+                    set [.os_words_loaded], 0
                     set a, FN_KERNEL
                     set b, 0x0000
                     jsr ssfs_load_file
                     ifn a, TRUE
                         set pc, .cnr_kernel
+                    add [.os_words_loaded], b
 
-                    ; Stack should be correctly set up for the kernel; just
-                    ; update screen stuff.
+                    ; set up stack for the kernel; push on words loaded and
+                    ; update screen stuff
                     set pick 2, [scr_cur]
                     set pick 3, [scr_format]
+                    set push, [.os_words_loaded]
 
                     ; Jump into kernel.
                     set pc, 0x0000
@@ -63,6 +66,8 @@
 :.cnr_kernel        set a, ERR_CNR_KERNEL
                     jsr scr_putpsz
                     jsr halt
+
+:.os_words_loaded   dat 0
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;

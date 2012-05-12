@@ -18,12 +18,13 @@
 
 .equ DiskDrive.hardware_id          0x00
 .equ DiskDrive.active               0x01
-.equ DiskDrive.words_per_sector     0x02
-.equ DiskDrive.sectors              0x03
-.equ DiskDrive.current_sector       0x04
-.equ DiskDrive.buffer               0x05
-.equ DiskDrive.pending              0x06
-;.equ DiskDrive.command_queue        0x07
+.equ DiskDrive.writable             0x02
+.equ DiskDrive.words_per_sector     0x03
+.equ DiskDrive.sectors              0x04
+.equ DiskDrive.current_sector       0x05
+.equ DiskDrive.buffer               0x06
+.equ DiskDrive.pending              0x07
+;.equ DiskDrive.command_queue        0x08
 .equ DiskDrive.sizeof               0x08
 
 .equ DISK_DRIVE_BUFFER_SIZE         512
@@ -46,6 +47,7 @@
 
                     ; First, we need to know how many disk drives there are.
                     set [.device_count], 0
+
                     set a, HMD2043_ID_L
                     set b, HMD2043_ID_H
                     set c, .count_device
@@ -56,7 +58,7 @@
                     ; Now, we can allocate the DiskDrive array.
                     set a, [.device_count]
                     mul a, DiskDrive.sizeof
-                    jsr mem_low_high_alloc
+                    jsr mem_high_alloc
                     set [disk_drives], a
 
                     ; We will fill in the entry for the boot drive first.
@@ -78,16 +80,21 @@
 :.next_entry        dat 0
 
 :.count_device      add [.device_count], 1
+                    set a, FALSE
                     set pc, pop
 
 :.build_entry_callback
-                    ife a, [.boot_device_id]
-                        set pc, pop
-                    set pc, .build_entry
+                    ifn a, [.boot_device_id]
+                        set pc, .build_entry
 
-:.build_entry       set push, a
-                    set push, z
+                    set a, FALSE
+                    set pc, pop
+
+:.build_entry       set push, z
+                    set push, a
                     set z, [.next_entry]
+                    mul z, DiskDrive.sizeof
+                    add z, [disk_drives]
 
                     set [z+DiskDrive.hardware_id], a
 
@@ -125,6 +132,16 @@
                     set [z+DiskDrive.pending], FALSE
 
                     add [.next_entry], 1
+
+                    add sp, 1 ; ignore a on stack
+                    set z, pop
+                    set a, FALSE
+                    set pc, pop
+
+:.drive_error       ; Just ignore this drive.
+                    add sp, 1 ; ignore a on stack
+                    set z, pop
+                    set a, FALSE
                     set pc, pop
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
