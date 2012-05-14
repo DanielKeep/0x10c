@@ -1,6 +1,0 @@
-
-.equ PANIC_UNKNOWN          0x0000
-.equ PANIC_ZERO_SYSCALL     0x0001
-.equ PANIC_BAD_SYSCALL      0x0002
-.equ PANIC_NO_LOW_MEM       0x0003
-.equ PANIC_NO_HIGH_MEM      0x0004

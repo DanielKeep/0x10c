@@ -1,7 +1,7 @@
 
 .equ do_syscall             0x0010
 
-.equ sys_panic              0
+.equ sys_panic_zero_syscall 0
 .equ scr_putpsz             1
 .equ scr_putcr              2
 .equ scr_advance            3

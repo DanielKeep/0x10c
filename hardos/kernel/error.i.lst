@@ -1,0 +1,7 @@
+
+ERR_NONE                            No error.
+
+ERR_DISK_INVALID_DRIVE_NUMBER       The drive number specified was invalid.
+ERR_DISK_NO_MEDIA                   The drive specified has no media or is inactive.
+ERR_DISK_INVALID_SECTOR             One or more specified sectors are invalid.
+ERR_DISK_READ_FAILED                Disk read failed at hardware level.

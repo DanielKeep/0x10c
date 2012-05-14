@@ -22,14 +22,22 @@
 .equ DiskDrive.words_per_sector     0x03
 .equ DiskDrive.sectors              0x04
 .equ DiskDrive.current_sector       0x05
-.equ DiskDrive.buffer               0x06
-.equ DiskDrive.pending              0x07
-;.equ DiskDrive.command_queue        0x08
-.equ DiskDrive.sizeof               0x08
+.equ DiskDrive.pending              0x06
+.equ DiskDrive.counter              0x07
+.equ DiskDrive.error                0x08
+.equ DiskDrive.trampoline           0x09
+.equ DiskDrive.trampoline_pushB     0x09
+.equ DiskDrive.trampoline_setB      0x0a
+.equ DiskDrive.trampoline_setPC     0x0c
+.equ DiskDrive.sizeof               0x0e
 
 .equ DISK_DRIVE_BUFFER_SIZE         512
 .equ DISK_DRIVE_BUFFER_UNUSED       0xffff
 ;.equ DISK_DRIVE_QUEUE_LENGTH        4
+
+.equ TRAMP_PUSH_B                   0x0701
+.equ TRAMP_SET_B                    0x7c21
+.equ TRAMP_SET_PC                   0x7f81
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -142,6 +150,119 @@
                     add sp, 1 ; ignore a on stack
                     set z, pop
                     set a, FALSE
+                    set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; disk_read_sectors(A = drive_num, B = sector,
+                    ;   C = count, buffer) -> status
+                    ;
+
+:disk_read_sectors  sub sp, 5
+                    ; 0: buffer
+                    ; 1: *counter
+                    ; 2: *error
+                    ; 3: counter
+                    ; 4: error
+                    ; 5: return
+                    ; 6: in buffer
+                    set peek, pick 6
+                    set pick 1, sp
+                    add pick 1, 3
+                    set pick 2, sp
+                    add pick 2, 4
+                    jsr disk_read_sectors_async
+                    ife a, ERR_NONE
+                        set pc, .wait_on_counter
+
+                    ; 0: counter
+                    ; 1: error
+                    ; 2: return
+                    ; 3: in buffer
+                    ; LASTEDIT
+                    ; I just realised that because return pointer is on top of
+                    ; the stack, doing callee-clean is a bitch.  FUCK.
+
+                    set pc, pop
+
+:.wait_on_counter   ife
+                    ;
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; disk_read_sectors_async(A = drive_num, B = sector,
+                    ;   C = count, buffer, counter, error) -> status
+                    ;
+
+:disk_read_sectors_async
+                    ifl a, [disk_num_drives]
+                        set pc, .drive_num_valid
+
+                    set a, ERR_DISK_INVALID_DRIVE_NUMBER
+                    set pc, pop
+
+:.drive_num_valid   set push, z
+                    set push, x
+                    set z, a
+                    mul z, DiskDrive.sizeof
+                    add z, [disk_drives]
+
+                    ife [z+DiskDrive.active], 1
+                        set pc, .drive_is_active
+
+                    set a, ERR_DISK_NO_MEDIA
+                    set pc, .return
+
+:.drive_is_active   ifl b, [z+DiskDrive.sectors]
+                        set pc, .sector_is_valid
+
+                    set a, ERR_DISK_INVALID_SECTOR
+                    set pc, .return
+
+:.sector_is_valid   set x, b
+                    add x, c
+                    ifl x, [z+DiskDrive.sectors]
+                        set pc, .count_is_valid
+
+                    set a, ERR_DISK_INVALID_SECTOR
+                    set pc, .return
+
+:.count_is_valid    ; If there is a pending operation on this drive, block.
+:.wait_on_pending   ifn [z+DiskDrive.pending], 0
+                        set pc, .wait_on_pending
+
+                    ; Issue the read.
+                    add [z+DiskDrive.pending], 1
+                    ife [z+DiskDrive.pending], 1
+                        set pc, .post_read
+
+                    ; Something's racing us.
+                    set b, a
+                    set a, PANIC_DISK_RACE
+                    jsr sys_panic_because_1
+
+:.post_read         ; Before we do the read, we need to set up the DiskDrive
+                    ; structure.
+                    set [z+DiskDrive.counter], pick 2
+                    set [z+DiskDrive.error], pick 3
+
+                    set push, a
+                    ; b has correct value
+                    ; c has correct value
+                    set x, pick 2
+                    hwi peek
+
+                    ife a, HMD2043_ERROR_NONE
+                        set pc, .read_success
+
+                    set a, ERROR_DISK_READ_FAILED
+                    set pc, .return
+
+:.read_success      ; All done.
+                    set a, ERR_NONE
+
+:.return            set x, pop
+                    set z, pop
                     set pc, pop
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

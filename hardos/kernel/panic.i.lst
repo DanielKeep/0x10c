@@ -1,0 +1,7 @@
+
+PANIC_UNKNOWN           Kernel panic reason unknown.
+PANIC_ZERO_SYSCALL      Called zero'th syscall.
+PANIC_BAD_SYSCALL       Called invalid syscall.
+PANIC_NO_LOW_MEM        No low memory left.
+PANIC_NO_HIGH_MEM       No high memory left.
+PANIC_DISK_RACE         Disk race condition detected.

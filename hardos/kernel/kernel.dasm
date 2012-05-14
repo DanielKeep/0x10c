@@ -98,7 +98,9 @@
                     ; sys_panic() -> DNR
                     ;
 
-:sys_panic          sub pc, 1
+:sys_panic          set ex, -1
+                    hwi [debug_id]
+                    sub pc, 1
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;
@@ -106,6 +108,27 @@
                     ;
 
 :sys_panic_because  set [sys_panic_reason], a
+                    set pc, sys_panic
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; sys_panic_because_1(A = reason, B = arg0) -> DNR
+                    ;
+
+:sys_panic_because_1
+                    set [sys_panic_reason], a
+                    set [sys_panic_arg0], b
+                    set pc, sys_panic
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; sys_panic_because_2(A = reason, B = arg0, C = arg1) -> DNR
+                    ;
+
+:sys_panic_because_2
+                    set [sys_panic_reason], a
+                    set [sys_panic_arg0], b
+                    set [sys_panic_arg1], c
                     set pc, sys_panic
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -165,9 +188,13 @@
                     ;
 
 :sys_panic_reason   dat 0
+:sys_panic_arg0     dat 0
+:sys_panic_arg1     dat 0
 
 :dd_id              dat 0xffff
 :kb_id              dat 0xffff
+
+:debug_id           dat 0x0001 ; Hard-coded for now.
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
