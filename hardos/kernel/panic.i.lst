@@ -1,7 +1,11 @@
 
-PANIC_UNKNOWN           Kernel panic reason unknown.
-PANIC_ZERO_SYSCALL      Called zero'th syscall.
-PANIC_BAD_SYSCALL       Called invalid syscall.
-PANIC_NO_LOW_MEM        No low memory left.
-PANIC_NO_HIGH_MEM       No high memory left.
-PANIC_DISK_RACE         Disk race condition detected.
+#                              12345678901234567890123456789012
+PANIC_UNKNOWN                  Unknown panic.
+PANIC_ZERO_SYSCALL             Zero syscall.
+PANIC_BAD_SYSCALL              Invalid syscall.
+PANIC_NO_LOW_MEM               No low memory left.
+PANIC_NO_HIGH_MEM              No high memory left.
+PANIC_DISK_RACE                Disk race detected.
+PANIC_NYI                      Not yet implemented.
+PANIC_DISK_NO_INT              No disk interrupt signalled.
+PANIC_DISK_INV_INT             Unknown disk interrupt.

@@ -9,34 +9,20 @@
 .include "../../includes/constants.i"
 .include "../../includes/hmd2043.i"
 
-.equ DiskCommand.type               0x00
-.equ DiskCommand.complete           0x01
-.equ DiskCommand.initial_sector     0x02
-.equ DiskCommand.sector_count       0x03
-.equ DiskCommand.buffer             0x04
-.equ DiskCommand.sizeof             0x05
-
 .equ DiskDrive.hardware_id          0x00
 .equ DiskDrive.active               0x01
 .equ DiskDrive.writable             0x02
 .equ DiskDrive.words_per_sector     0x03
 .equ DiskDrive.sectors              0x04
-.equ DiskDrive.current_sector       0x05
-.equ DiskDrive.pending              0x06
-.equ DiskDrive.counter              0x07
-.equ DiskDrive.error                0x08
-.equ DiskDrive.trampoline           0x09
-.equ DiskDrive.trampoline_pushB     0x09
-.equ DiskDrive.trampoline_setB      0x0a
-.equ DiskDrive.trampoline_setPC     0x0c
-.equ DiskDrive.sizeof               0x0e
+.equ DiskDrive.pending              0x05
+.equ DiskDrive.counter              0x06
+.equ DiskDrive.error                0x07
+.equ DiskDrive.trampoline           0x08
+.equ DiskDrive.trampoline_setA      0x08
+.equ DiskDrive.trampoline_setPC     0x0a
+.equ DiskDrive.sizeof               0x0c
 
-.equ DISK_DRIVE_BUFFER_SIZE         512
-.equ DISK_DRIVE_BUFFER_UNUSED       0xffff
-;.equ DISK_DRIVE_QUEUE_LENGTH        4
-
-.equ TRAMP_PUSH_B                   0x0701
-.equ TRAMP_SET_B                    0x7c21
+.equ TRAMP_SET_A                    0x7c01
 .equ TRAMP_SET_PC                   0x7f81
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -124,20 +110,36 @@
                     xor x, 1
                     set [z+DiskDrive.writable], x
 
-                    set pc, .fill_current_sector
+                    set pc, .fill_pending
 
 :.no_disk           set [z+DiskDrive.words_per_sector], 0xffff
                     set [z+DiskDrive.sectors], 0xffff
                     set [z+DiskDrive.writable], 0
 
-:.fill_current_sector
-                    set [z+DiskDrive.current_sector], DISK_DRIVE_BUFFER_UNUSED
+:.fill_pending      set [z+DiskDrive.pending], FALSE
 
-                    set a, DISK_DRIVE_BUFFER_SIZE
-                    jsr mem_high_alloc
-                    set [z+DiskDrive.buffer], a
+                    set [z+DiskDrive.counter], 0
+                    set [z+DiskDrive.error], 0
 
-                    set [z+DiskDrive.pending], FALSE
+                    ; Fill in trampoline
+                    set [z+DiskDrive.trampoline_setA+0], TRAMP_SET_A
+                    set [z+DiskDrive.trampoline_setA+1], z
+                    set [z+DiskDrive.trampoline_setPC+0], TRAMP_SET_PC
+                    set [z+DiskDrive.trampoline_setPC+1], disk_handle_interrupt
+
+                    ; Enable interrupts on device.
+                    set a, HMD2043_SET_INTERRUPT_MESSAGE
+                    set b, z
+                    add b, DiskDrive.trampoline
+                    hwi peek
+
+                    set a, HMD2043_QUERY_DEVICE_FLAGS
+                    hwi peek
+                    ifn a, HMD2043_ERROR_NONE
+                        set pc, .drive_error
+                    set a, HMD2043_UPDATE_DEVICE_FLAGS
+                    bor b, HMD2043_NON_BLOCKING | HMD2043_MEDIA_STATUS_INTERRUPT
+                    hwi peek
 
                     add [.next_entry], 1
 
@@ -151,6 +153,73 @@
                     set z, pop
                     set a, FALSE
                     set pc, pop
+
+                    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                    ;
+                    ; disk_handle_interrupt(A = *DiskDrive)
+                    ;   -> -
+                    ;
+                    ; This function is called by the interrupt landing pad
+                    ; stored inside the drive's DiskDrive structure (itself
+                    ; called by the system IH).
+                    ;
+                    ; SPECIAL NOTES:
+                    ;
+                    ; This function must preserve the value of all registers
+                    ; other than A and PC.
+                    ;
+
+:disk_handle_interrupt
+                    set push, ex
+                    set push, z
+                    set push, b
+
+                    set z, a
+
+                    ; Query interrupt type.
+                    set a, HMD2043_QUERY_INTERRUPT_TYPE
+                    hwi [z+DiskDrive.hardware_id]
+                    ; * A B
+
+                    ife b, 0
+                        set pc, .no_int_type
+                    ifg b, HMD2043_INT_MAX
+                        set pc, .inv_int_type
+
+                    ; Jump into handler
+                    sub b, 1
+                    add b, .int_type_table
+                    set pc, [b]
+
+:.int_type_table    dat .int_media_status
+                    dat .int_read_complete
+                    dat .int_write_complete
+
+:.int_media_status  set a, PANIC_NYI
+                    jsr sys_panic_because
+
+:.int_read_complete
+:.int_write_complete
+                    ; Re-use b since we've already switched on it.
+                    ; OK; we store the error condition, increment the completion
+                    ; counter and decrement the pending flag (to zero).
+                    set b, [z+DiskDrive.error]
+                    set [b], a
+                    set b, [z+DiskDrive.counter]
+                    add [b], 1
+                    sub [z+DiskDrive.pending], 1
+
+                    ; All done!
+:.return            set b, pop
+                    set z, pop
+                    set ex, pop
+                    set pc, pop
+
+:.no_int_type       set a, PANIC_DISK_NO_INT
+                    jsr sys_panic_because
+
+:.inv_int_type      set a, PANIC_DISK_INV_INT
+                    jsr sys_panic_because
 
                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
                     ;

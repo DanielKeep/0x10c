@@ -20,12 +20,12 @@ with open(FILE_BASE+'.i.lst', 'rt') as fi:
 
             parts = line.split(None, 1)
             if len(parts) != 2:
-                print "%d: skipping, doesn't have two parts." % ln
+                print("%d: skipping, doesn't have two parts." % ln)
                 continue
 
             if not parts[0].startswith(PREFIX):
-                print "%d: excluding %s: doesn't start with %s" % (
-                    ln, parts[0], PREFIX)
+                print("%d: excluding %s: doesn't start with %s" % (
+                    ln, parts[0], PREFIX))
 
             fo.write('.equ %s %d\n' % (parts[0], cur_id))
             errors.append((parts[0], parts[1]))

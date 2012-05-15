@@ -1,5 +1,15 @@
 
-from itertools import islice, izip_longest
+try:
+    from itertools import islice, izip_longest
+
+    EMPTY_BYTESTR = ""
+
+except ImportError:
+    from itertools import islice, zip_longest
+    izip_longest = zip_longest
+
+    EMPTY_BYTESTR = bytes()
+
 from struct import pack
 
 FILE_BASE='error'
@@ -20,12 +30,12 @@ with open(FILE_BASE+'.i.lst', 'rt') as fi:
 
             parts = line.split(None, 1)
             if len(parts) != 2:
-                print "%d: skipping, doesn't have two parts." % ln
+                print("%d: skipping, doesn't have two parts." % ln)
                 continue
 
             if not parts[0].startswith(PREFIX):
-                print "%d: excluding %s: doesn't start with %s" % (
-                    ln, parts[0], PREFIX)
+                print("%d: excluding %s: doesn't start with %s" % (
+                    ln, parts[0], PREFIX))
 
             fo.write('.equ %s %d\n' % (parts[0], cur_id))
             errors.append((parts[0], parts[1]))
@@ -45,7 +55,7 @@ def to_psz_iter(s):
         yield pack('>H', ((ac & 0x7f) << 8) | (bc & 0x7f))
 
 def to_psz(s):
-    return "".join(to_psz_iter(s))
+    return EMPTY_BYTESTR.join(to_psz_iter(s))
 
 with open('../root/%s.smap' % SMAP_NAME, 'wb') as fo:
     fo.write(pack('>H', len(errors)))
